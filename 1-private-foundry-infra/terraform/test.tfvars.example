@@ -1,0 +1,43 @@
+# ============================================================================
+# test.tfvars — values for a short-lived apply -> verify -> destroy test run.
+# Copy to test.tfvars and edit the account name + resource group, then run:
+#   ..\test\Test-And-Destroy.ps1
+# ============================================================================
+
+# --- REQUIRED: point at a real existing Foundry account you can write to ------
+existing_account_name   = "REPLACE-with-your-foundry-account"
+existing_resource_group = "REPLACE-with-its-resource-group"
+
+# A throwaway project name (the script destroys it at the end).
+project_name = "tf-test-throwaway"
+display_name = "TF Test (throwaway)"
+description  = "Temporary project for testing the Terraform module — safe to delete"
+
+identity_type    = "SystemAssigned"
+project_sku_name = "S0"
+
+tags = {
+  environment = "test"
+  purpose     = "throwaway-validation"
+  ttl         = "delete-immediately"
+}
+
+# --- Observability: ON, so we exercise App Insights wiring. Cheap + destroyed. -
+enable_app_insights          = true
+create_log_analytics         = true
+log_analytics_retention_days = 30
+
+# --- Model: ON to exercise the deployment path, but TINY capacity to barely
+#     touch quota. GlobalStandard has no hourly/standing charge (consumption
+#     only), and the script destroys it. Set deploy_model = false to skip
+#     entirely if you're short on quota.
+deploy_model   = true
+model_name     = "gpt-4.1"
+model_version  = null
+model_sku_name = "GlobalStandard"
+model_capacity = 1 # 1k TPM — minimal quota footprint for the test
+
+# --- RBAC: OFF by default so the test doesn't require Owner / User Access
+#     Administrator. To test a group grant, fill in a real Entra group objectId.
+account_role_assignments = {}
+project_role_assignments = {}

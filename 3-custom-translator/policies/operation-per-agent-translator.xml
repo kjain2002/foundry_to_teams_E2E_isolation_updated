@@ -1,0 +1,31 @@
+<!--
+    APIM operation-level policy (per-agent) — Container App translator variant.
+
+    Replaces the legacy "rewrite-uri to Foundry" policy. With the translator
+    container in place, APIM now:
+      1. Validates the Bot Framework JWT (done by api-base.xml — unchanged)
+      2. Forwards the original Activity body to the per-bot Container App's
+         internal ingress URL (resolves via the CAE private DNS zone linked
+         to APIM's VNet)
+      3. Rewrites the path to /api/messages (the bot endpoint inside the
+         container)
+
+    The Container App itself runs botbuilder, which re-validates the JWT
+    (defence in depth), then calls Foundry on behalf of the user.
+-->
+<policies>
+  <inbound>
+    <base />
+    <set-backend-service base-url="__TRANSLATOR_URL__" />
+    <rewrite-uri template="/api/messages" copy-unmatched-params="false" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

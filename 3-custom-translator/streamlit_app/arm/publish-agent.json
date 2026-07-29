@@ -1,0 +1,361 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.43.8.12551",
+      "templateHash": "11883437264154987340"
+    }
+  },
+  "parameters": {
+    "botName": {
+      "type": "string",
+      "metadata": {
+        "description": "Bot Service resource name (lowercase, hyphens). e.g. bot-sales-copilot."
+      }
+    },
+    "botDisplayName": {
+      "type": "string",
+      "metadata": {
+        "description": "Teams display name shown to users. e.g. \"Sales Copilot\"."
+      }
+    },
+    "botAppId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra (AAD) AppId of the SingleTenant app created by the driver script."
+      }
+    },
+    "botTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra tenant id the app belongs to."
+      }
+    },
+    "apimName": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing APIM resource name (from bootstrap phase)."
+      }
+    },
+    "foundryBotApiName": {
+      "type": "string",
+      "defaultValue": "foundry-bot",
+      "metadata": {
+        "description": "APIM API name created by bootstrap.bicep."
+      }
+    },
+    "foundryProjectName": {
+      "type": "string",
+      "metadata": {
+        "description": "Foundry project name. Retained for naming/tagging; routing no longer uses it (translator container holds the Foundry endpoint)."
+      }
+    },
+    "agentId": {
+      "type": "string",
+      "metadata": {
+        "description": "Foundry agent id to publish. For Prompt Agents this is the display name (e.g. \"<your-agent>\"). For legacy Assistants it is asst_xxx."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Tags applied to the Bot Service."
+      }
+    },
+    "containerAppsEnvironmentId": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Apps Environment id (internal, VNet-injected)."
+      }
+    },
+    "containerAppsDefaultDomain": {
+      "type": "string",
+      "metadata": {
+        "description": "Default domain of the Container Apps Environment (used to build the internal FQDN)."
+      }
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR login server (e.g. acrtranslatorabc.azurecr.io)."
+      }
+    },
+    "translatorMiResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "User-assigned MI resource id used by the Container App for ACR pull, Foundry, Table, and KV."
+      }
+    },
+    "translatorMiClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Client id of the translator MI (used to pin DefaultAzureCredential inside the container)."
+      }
+    },
+    "translatorImage": {
+      "type": "string",
+      "metadata": {
+        "description": "Translator container image, including tag (e.g. acrtranslatorabc.azurecr.io/translator:abc1234)."
+      }
+    },
+    "foundryProjectEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Foundry project endpoint, e.g. https://<your-foundry>.services.ai.azure.com/api/projects/<your-project>"
+      }
+    },
+    "threadTableUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Table Storage endpoint (e.g. https://sttranslatorabc.table.core.windows.net/) used for thread state."
+      }
+    },
+    "botSecretKvUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Key Vault secret URI (unversioned) for this bot's client secret (e.g. https://kv-abc.vault.azure.net/secrets/bot-myagent). Not a secret value itself."
+      }
+    },
+    "containerAppName": {
+      "type": "string",
+      "defaultValue": "[format('ca-{0}', parameters('botName'))]",
+      "metadata": {
+        "description": "Container App name. Defaults to ca-<botName>."
+      }
+    },
+    "mergedAllowedAudiences": {
+      "type": "string",
+      "metadata": {
+        "description": "Comma-separated list of all bot AppIds that should be accepted by the API. The driver merges existing + new before passing in."
+      }
+    }
+  },
+  "variables": {
+    "$fxv#0": "<!--\r\n    APIM operation-level policy (per-agent) — Container App translator variant.\r\n\r\n    Replaces the legacy \"rewrite-uri to Foundry\" policy. With the translator\r\n    container in place, APIM now:\r\n      1. Validates the Bot Framework JWT (done by api-base.xml — unchanged)\r\n      2. Forwards the original Activity body to the per-bot Container App's\r\n         internal ingress URL (resolves via the CAE private DNS zone linked\r\n         to APIM's VNet)\r\n      3. Rewrites the path to /api/messages (the bot endpoint inside the\r\n         container)\r\n\r\n    The Container App itself runs botbuilder, which re-validates the JWT\r\n    (defence in depth), then calls Foundry on behalf of the user.\r\n-->\r\n<policies>\r\n  <inbound>\r\n    <base />\r\n    <set-backend-service base-url=\"__TRANSLATOR_URL__\" />\r\n    <rewrite-uri template=\"/api/messages\" copy-unmatched-params=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n",
+    "translatorInternalFqdn": "[format('{0}.{1}', parameters('containerAppName'), parameters('containerAppsDefaultDomain'))]",
+    "translatorInternalUrl": "[format('https://{0}', variables('translatorInternalFqdn'))]",
+    "operationPolicyXml": "[replace(variables('$fxv#0'), '__TRANSLATOR_URL__', variables('translatorInternalUrl'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimName'), parameters('foundryBotApiName'), format('post-agent-{0}', take(replace(parameters('agentId'), '_', '-'), 60)))]",
+      "properties": {
+        "displayName": "[format('POST messages → {0}', parameters('agentId'))]",
+        "method": "POST",
+        "urlTemplate": "[format('/agents/{0}/messages', parameters('agentId'))]",
+        "request": {
+          "description": "Activity Protocol message from Bot Channel Service"
+        },
+        "responses": [
+          {
+            "statusCode": 200,
+            "description": "OK"
+          },
+          {
+            "statusCode": 401,
+            "description": "Unauthorized (JWT validation failed)"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-10-02-preview",
+      "name": "[parameters('containerAppName')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[parameters('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('translatorMiResourceId'))]": {}
+        }
+      },
+      "properties": {
+        "environmentId": "[parameters('containerAppsEnvironmentId')]",
+        "configuration": {
+          "activeRevisionsMode": "Single",
+          "ingress": {
+            "external": true,
+            "targetPort": 3978,
+            "transport": "auto",
+            "allowInsecure": false,
+            "traffic": [
+              {
+                "latestRevision": true,
+                "weight": 100
+              }
+            ]
+          },
+          "registries": [
+            {
+              "server": "[parameters('acrLoginServer')]",
+              "identity": "[parameters('translatorMiResourceId')]"
+            }
+          ],
+          "secrets": [
+            {
+              "name": "bot-app-password",
+              "keyVaultUrl": "[parameters('botSecretKvUri')]",
+              "identity": "[parameters('translatorMiResourceId')]"
+            }
+          ]
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "translator",
+              "image": "[parameters('translatorImage')]",
+              "resources": {
+                "cpu": "[json('0.5')]",
+                "memory": "1Gi"
+              },
+              "env": [
+                {
+                  "name": "BOT_APP_ID",
+                  "value": "[parameters('botAppId')]"
+                },
+                {
+                  "name": "BOT_APP_PASSWORD",
+                  "secretRef": "bot-app-password"
+                },
+                {
+                  "name": "BOT_APP_TENANT_ID",
+                  "value": "[parameters('botTenantId')]"
+                },
+                {
+                  "name": "BOT_APP_TYPE",
+                  "value": "SingleTenant"
+                },
+                {
+                  "name": "FOUNDRY_PROJECT_ENDPOINT",
+                  "value": "[parameters('foundryProjectEndpoint')]"
+                },
+                {
+                  "name": "FOUNDRY_AGENT_NAME",
+                  "value": "[parameters('agentId')]"
+                },
+                {
+                  "name": "THREAD_TABLE_URL",
+                  "value": "[parameters('threadTableUrl')]"
+                },
+                {
+                  "name": "THREAD_TABLE_NAME",
+                  "value": "threads"
+                },
+                {
+                  "name": "AZURE_CLIENT_ID",
+                  "value": "[parameters('translatorMiClientId')]"
+                }
+              ],
+              "probes": [
+                {
+                  "type": "Liveness",
+                  "httpGet": {
+                    "path": "/health",
+                    "port": 3978
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 30
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 3
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations/policies",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}/{3}', parameters('apimName'), parameters('foundryBotApiName'), format('post-agent-{0}', take(replace(parameters('agentId'), '_', '-'), 60)), 'policy')]",
+      "properties": {
+        "format": "rawxml",
+        "value": "[variables('operationPolicyXml')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('apimName'), parameters('foundryBotApiName'), format('post-agent-{0}', take(replace(parameters('agentId'), '_', '-'), 60)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/namedValues",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'allowed-bot-audiences')]",
+      "properties": {
+        "displayName": "allowed-bot-audiences",
+        "value": "[parameters('mergedAllowedAudiences')]",
+        "secret": false
+      }
+    },
+    {
+      "type": "Microsoft.BotService/botServices",
+      "apiVersion": "2022-09-15",
+      "name": "[parameters('botName')]",
+      "location": "global",
+      "tags": "[parameters('tags')]",
+      "kind": "azurebot",
+      "sku": {
+        "name": "F0"
+      },
+      "properties": {
+        "displayName": "[parameters('botDisplayName')]",
+        "endpoint": "[format('https://{0}.azure-api.net/bot/agents/{1}/messages', parameters('apimName'), parameters('agentId'))]",
+        "msaAppId": "[parameters('botAppId')]",
+        "msaAppTenantId": "[parameters('botTenantId')]",
+        "msaAppType": "SingleTenant",
+        "publicNetworkAccess": "Enabled",
+        "isStreamingSupported": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis/operations/policies', parameters('apimName'), parameters('foundryBotApiName'), format('post-agent-{0}', take(replace(parameters('agentId'), '_', '-'), 60)), 'policy')]",
+        "[resourceId('Microsoft.ApiManagement/service/namedValues', parameters('apimName'), 'allowed-bot-audiences')]"
+      ]
+    },
+    {
+      "type": "Microsoft.BotService/botServices/channels",
+      "apiVersion": "2022-09-15",
+      "name": "[format('{0}/{1}', parameters('botName'), 'MsTeamsChannel')]",
+      "location": "global",
+      "properties": {
+        "channelName": "MsTeamsChannel",
+        "properties": {
+          "isEnabled": true,
+          "enableCalling": false,
+          "acceptedTerms": true
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.BotService/botServices', parameters('botName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "botResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.BotService/botServices', parameters('botName'))]"
+    },
+    "botEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.BotService/botServices', parameters('botName')), '2022-09-15').endpoint]"
+    },
+    "botName": {
+      "type": "string",
+      "value": "[parameters('botName')]"
+    },
+    "translatorAppName": {
+      "type": "string",
+      "value": "[parameters('containerAppName')]"
+    },
+    "translatorInternalUrl": {
+      "type": "string",
+      "value": "[variables('translatorInternalUrl')]"
+    }
+  }
+}

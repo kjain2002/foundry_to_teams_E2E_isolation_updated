@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Publish a private Foundry agent — technology flow</title>
+<style>
+  :root{
+    --ink:#1b1a19; --muted:#605e5c; --line:#e6e4e2;
+    --blue-bg:#eef4fb; --blue-ln:#cfe1f5;
+    --purple-bg:#f4eefb; --purple-ln:#e0d0f0;
+    --green-bg:#eef7ee; --green-ln:#cfe8cf;
+    --gray-bg:#f3f2f1; --gray-ln:#e1dfdd;
+    --arrow:#2f9e44;
+    --shadow:0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.05);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:#fff; color:var(--ink);
+    font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .canvas{min-width:1820px; margin:0 auto; padding:26px 34px 34px;}
+  h1{font-size:23px; font-weight:600; text-align:center; margin:0 0 4px;}
+  .sub{font-size:14px; color:var(--muted); text-align:center; margin:0 0 24px;}
+
+  .band{display:flex; align-items:center; gap:0;}
+
+  .zone{border-radius:16px; border:1px solid; padding:30px 16px 16px; position:relative; flex:0 0 auto;}
+  .zone.blue{background:var(--blue-bg); border-color:var(--blue-ln);}
+  .zone.purple{background:var(--purple-bg); border-color:var(--purple-ln);}
+  .zone.green{background:var(--green-bg); border-color:var(--green-ln);}
+  .zone.gray{background:var(--gray-bg); border-color:var(--gray-ln);}
+  .zlabel{position:absolute; top:9px; left:16px; font-size:12.5px; color:#3b3a39; font-weight:600;}
+  .zlabel span{font-weight:400; color:var(--muted);}
+  .inner{display:flex; align-items:center; gap:0;}
+
+  .node{width:132px; background:#fff; border:1px solid var(--line); border-radius:13px;
+    padding:12px 8px 10px; display:flex; flex-direction:column; align-items:center; text-align:center;
+    gap:7px; box-shadow:var(--shadow); position:relative;}
+  .node .ic{width:46px; height:46px;}
+  .node .nm{font-size:13px; font-weight:700; line-height:1.15;}
+  .node .sb{font-size:10.5px; color:var(--muted); line-height:1.2;}
+  .node.star{border-color:var(--arrow); box-shadow:0 0 0 2px var(--arrow) inset, var(--shadow);}
+  .startag{position:absolute; top:-10px; left:50%; transform:translateX(-50%); white-space:nowrap;
+    background:var(--arrow); color:#fff; font-size:9.5px; font-weight:700; letter-spacing:.3px;
+    padding:2px 8px; border-radius:999px;}
+
+  /* connector arrow with payload label */
+  .arr{flex:0 0 auto; width:96px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:0 4px;}
+  .arr.sm{width:58px;}
+  .arr .lbl{font-size:11px; color:#2a6b34; font-weight:600; text-align:center; line-height:1.15;}
+  .arr svg{width:100%; height:22px; color:var(--arrow);}
+  .arr.gray svg{color:#9a9894;} .arr.gray .lbl{color:#605e5c;}
+
+  .note{position:absolute; bottom:8px; left:50%; transform:translateX(-50%); white-space:nowrap;
+    font-size:11px; color:#0b6b0b; font-weight:600; background:#fff; border:1px solid var(--green-ln);
+    padding:2px 12px; border-radius:999px;}
+
+  .foot{margin-top:22px; text-align:center; font-size:13px; color:var(--muted);}
+  .foot b{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <h1>Publish a private Foundry agent to Teams &mdash; what each step touches</h1>
+  <p class="sub">Arrows show what gets created / passed &nbsp;&middot;&nbsp; the shared container &amp; Foundry are already running (reused, never re-created)</p>
+
+  <div class="band">
+
+    <!-- start -->
+    <div class="zone gray">
+      <div class="zlabel">You start here</div>
+      <div class="inner">
+        <div class="node">
+          <!-- Streamlit -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#FF4B4B"/><path d="M9 21 24 28 39 21 24 25Z" fill="#fff"/><path d="M9 21 24 16 39 21 24 20Z" fill="#fff" opacity=".85"/><path d="M13 30 24 35 35 30 24 33Z" fill="#fff" opacity=".7"/></svg>
+          <div class="nm">Publisher</div><div class="sb">Streamlit app</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arr"><div class="lbl">create app<br>+ secret</div>
+      <svg viewBox="0 0 96 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h80M76 4l12 7-12 7"/></svg></div>
+
+    <!-- identity -->
+    <div class="zone blue">
+      <div class="zlabel">Identity &amp; secrets</div>
+      <div class="inner">
+        <div class="node">
+          <!-- Entra ID -->
+          <svg class="ic" viewBox="0 0 48 48"><defs><linearGradient id="entra" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4fb8f0"/><stop offset="1" stop-color="#1b6ec2"/></linearGradient></defs><path d="M24 6 8 39h8l8-17 4 9-4 2-4 5h16L24 6z" fill="url(#entra)"/></svg>
+          <div class="nm">Entra ID</div><div class="sb">bot app + secret</div>
+        </div>
+        <div class="arr sm"><div class="lbl">secret</div>
+          <svg viewBox="0 0 58 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h44M40 4l12 7-12 7"/></svg></div>
+        <div class="node">
+          <!-- Key Vault -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0A67C0"/><circle cx="20" cy="20" r="6.5" fill="none" stroke="#FFD34E" stroke-width="3"/><path d="M24.5 24 34 33.5M30 29.5l3-3M27 26.5l2.5-2.5" stroke="#FFD34E" stroke-width="3" stroke-linecap="round"/></svg>
+          <div class="nm">Key Vault</div><div class="sb">store secret</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arr"><div class="lbl">register<br>the bot</div>
+      <svg viewBox="0 0 96 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h80M76 4l12 7-12 7"/></svg></div>
+
+    <!-- teams bot -->
+    <div class="zone purple">
+      <div class="zlabel">Teams bot</div>
+      <div class="inner">
+        <div class="node">
+          <!-- Azure Bot Service -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0078D4"/><rect x="13" y="18" width="22" height="16" rx="4" fill="#fff"/><path d="M24 12v5M24 12a2 2 0 1 0 0-.01" stroke="#fff" stroke-width="2.4"/><circle cx="19.5" cy="26" r="2.3" fill="#0078D4"/><circle cx="28.5" cy="26" r="2.3" fill="#0078D4"/></svg>
+          <div class="nm">Bot Service</div><div class="sb">Azure Bot</div>
+        </div>
+        <div class="arr sm"><div class="lbl">channel</div>
+          <svg viewBox="0 0 58 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h44M40 4l12 7-12 7"/></svg></div>
+        <div class="node">
+          <!-- Microsoft Teams -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#5059C9"/><circle cx="32" cy="15" r="4.5" fill="#7B83EB"/><rect x="10" y="16" width="20" height="20" rx="4" fill="#fff"/><path d="M14 21h12M20 21v11" stroke="#5059C9" stroke-width="2.6" stroke-linecap="round"/></svg>
+          <div class="nm">Teams</div><div class="sb">channel added</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arr"><div class="lbl">write row<br>+ add route</div>
+      <svg viewBox="0 0 96 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h80M76 4l12 7-12 7"/></svg></div>
+
+    <!-- shared platform -->
+    <div class="zone green">
+      <div class="zlabel">Shared platform &nbsp;<span>&mdash; already running (reused)</span></div>
+      <div class="inner">
+        <div class="node star">
+          <span class="startag">the whole change</span>
+          <!-- Azure Table -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0A67C0"/><rect x="12" y="13" width="24" height="22" rx="2.5" fill="#fff"/><path d="M12 20h24M12 27h24M22 13v22M30 13v22" stroke="#0A67C0" stroke-width="2"/></svg>
+          <div class="nm">Azure Table</div><div class="sb">registry row<br>botId&rarr;agent</div>
+        </div>
+        <div class="arr sm gray"><div class="lbl">read</div>
+          <svg viewBox="0 0 58 22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"><path d="M4 11h44M40 4l12 7-12 7"/></svg></div>
+        <div class="node">
+          <!-- API Management -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0078D4"/><circle cx="14" cy="24" r="3.4" fill="#fff"/><circle cx="34" cy="15" r="3.4" fill="#fff"/><circle cx="34" cy="33" r="3.4" fill="#fff"/><path d="M17 22.5 31 15.5M17 25.5 31 32.5" stroke="#fff" stroke-width="2.4"/></svg>
+          <div class="nm">API Mgmt</div><div class="sb">route added</div>
+        </div>
+        <div class="arr sm gray"><div class="lbl">routes</div>
+          <svg viewBox="0 0 58 22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"><path d="M4 11h44M40 4l12 7-12 7"/></svg></div>
+        <div class="node">
+          <!-- Container Apps -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0078D4"/><rect x="12" y="16" width="24" height="16" rx="2.5" fill="#fff"/><path d="M12 22h24" stroke="#0078D4" stroke-width="2"/><circle cx="17" cy="19" r="1.4" fill="#0078D4"/><circle cx="17" cy="27.5" r="1.4" fill="#0078D4"/><circle cx="22" cy="27.5" r="1.4" fill="#0078D4"/></svg>
+          <div class="nm">Container App</div><div class="sb">shared router</div>
+        </div>
+        <div class="arr sm gray"><div class="lbl">agent<br>SDK</div>
+          <svg viewBox="0 0 58 22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"><path d="M4 11h44M40 4l12 7-12 7"/></svg></div>
+        <div class="node">
+          <!-- Foundry -->
+          <svg class="ic" viewBox="0 0 48 48"><defs><linearGradient id="fdry" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8ef0"/><stop offset=".5" stop-color="#8a5cf0"/><stop offset="1" stop-color="#c94fd6"/></linearGradient></defs><path d="M24 5c1.6 9.4 9 16.8 18.5 18.5C33 25.2 25.6 32.6 24 42c-1.6-9.4-9-16.8-18.5-18.5C15 21.8 22.4 14.4 24 5z" fill="url(#fdry)"/></svg>
+          <div class="nm">Foundry</div><div class="sb">agent runs here</div>
+        </div>
+      </div>
+      <div class="note">no image build &nbsp;&middot;&nbsp; no new container</div>
+    </div>
+
+    <div class="arr"><div class="lbl">download<br>.zip</div>
+      <svg viewBox="0 0 96 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h80M76 4l12 7-12 7"/></svg></div>
+
+    <!-- result -->
+    <div class="zone gray">
+      <div class="zlabel">You're done</div>
+      <div class="inner">
+        <div class="node">
+          <!-- Teams app zip -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="8" y="6" width="32" height="36" rx="4" fill="#E8B96B"/><rect x="21" y="6" width="6" height="36" fill="#fff"/><path d="M24 6v3M24 12v3M24 18v3M24 24v3" stroke="#b07d2b" stroke-width="6"/><rect x="19" y="27" width="10" height="9" rx="1.5" fill="#5059C9"/><path d="M22 31.5h4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <div class="nm">Teams app</div><div class="sb">.zip package</div>
+        </div>
+        <div class="arr sm"><div class="lbl">upload</div>
+          <svg viewBox="0 0 58 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h44M40 4l12 7-12 7"/></svg></div>
+        <div class="node">
+          <!-- Teams user -->
+          <svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#5059C9"/><circle cx="24" cy="19" r="6" fill="#fff"/><path d="M13 36c0-6 5-9.5 11-9.5S35 30 35 36" fill="#fff"/></svg>
+          <div class="nm">Teams user</div><div class="sb">chat as you</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="foot"><b>Before:</b> build a translator image + deploy a private Container App <b>per agent</b>. &nbsp;&nbsp;&#8594;&nbsp;&nbsp; <b>Now:</b> one shared Container App &mdash; publishing only writes a <b>row</b> in Azure Table and a <b>route</b> in APIM.</div>
+
+</div>
+</body>
+</html>

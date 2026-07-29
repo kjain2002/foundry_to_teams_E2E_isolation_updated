@@ -1,0 +1,32 @@
+<!--
+    APIM operation-level policy applied per-agent (POST /agents/{agentId}/messages).
+
+    The base API policy already validated the bot JWT and pinned the backend to
+    the Foundry private endpoint. Here we just rewrite the inbound path to the
+    Foundry per-agent Activity Protocol endpoint.
+
+    Foundry per-agent messaging endpoint format (verify against the
+    "Build your own client" panel in the Foundry portal — Microsoft has shipped
+    minor path tweaks across previews):
+
+        POST /api/projects/{projectName}/agents/{agentId}/messages
+
+    The agentId is baked into the rewrite-uri template at deploy time by
+    publish-agent.bicep via a `set-variable` injected above this policy.
+-->
+<policies>
+  <inbound>
+    <base />
+    <!-- The {agentId} below is substituted at deploy time by Bicep. -->
+    <rewrite-uri template="/api/projects/__FOUNDRY_PROJECT__/agents/__AGENT_ID__/messages" copy-unmatched-params="false" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

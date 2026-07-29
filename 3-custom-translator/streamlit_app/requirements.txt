@@ -1,0 +1,20 @@
+# Streamlit UI
+streamlit>=1.36,<2.0
+
+# Foundry / Azure AI SDKs
+azure-ai-projects>=1.0.0b9
+azure-ai-agents>=1.0.0
+
+# Azure auth + SDKs
+azure-identity>=1.17
+azure-core>=1.30
+azure-keyvault-secrets>=4.8
+azure-data-tables>=12.5
+
+# HTTP + utilities
+httpx>=0.27
+python-dotenv>=1.0
+pydantic>=2.7
+
+# MSAL for on-behalf-of token exchange
+msal>=1.30

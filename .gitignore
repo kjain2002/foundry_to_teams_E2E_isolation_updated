@@ -1,0 +1,49 @@
+# ── Secrets / local config ──────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+
+# ── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Compiled ARM (kept under publish-agent/streamlit_app/arm/) ──────
+# Re-built by rebuild-arm.ps1; commit only the final publish-agent.json
+*.bicep.bak
+*.bicep.tmp
+
+# ── Local capability-host & deployment scratch bodies ───────────────
+caphost-body.json
+acct-caphost-body.json
+proj-caphost-body.json
+*.deployment-output.json
+
+# ── Per-publish artifacts ───────────────────────────────────────────
+3-custom-translator/**/out/
+3-custom-translator/**/*.zip
+
+# ── Terraform ───────────────────────────────────────────────────────
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+*.tfvars
+!*.tfvars.example
+# ── Internal build history / audit trail (not for publication) ────────────
+CHRONOLOGICAL_ACTION_LOG.md
+# ── OS / editor noise ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

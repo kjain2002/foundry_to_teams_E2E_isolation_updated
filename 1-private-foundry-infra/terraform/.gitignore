@@ -1,0 +1,23 @@
+# Terraform runtime artifacts — do not commit
+.terraform/
+.terraform.tfstate.lock.info
+
+# State (this example writes local state; use a remote backend for CI/CD)
+*.tfstate
+*.tfstate.*
+
+# Saved plans
+tfplan
+tfplan.*
+*.tfplan
+
+# Real variable values (keep *.tfvars.example committed)
+*.tfvars
+!*.tfvars.example
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Conftest policy cache (from `conftest --update`)
+policy/

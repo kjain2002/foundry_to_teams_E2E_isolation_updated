@@ -1,0 +1,47 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "${TEAMS_APP_ID}",
+  "developer": {
+    "name": "${DEVELOPER_NAME}",
+    "websiteUrl": "${DEVELOPER_WEBSITE}",
+    "privacyUrl": "${DEVELOPER_PRIVACY_URL}",
+    "termsOfUseUrl": "${DEVELOPER_TERMS_URL}"
+  },
+  "name": {
+    "short": "${BOT_DISPLAY_SHORT}",
+    "full": "${BOT_DISPLAY_FULL}"
+  },
+  "description": {
+    "short": "${BOT_DESC_SHORT}",
+    "full": "${BOT_DESC_FULL}"
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#0078D4",
+  "bots": [
+    {
+      "botId": "${BOT_APP_ID}",
+      "scopes": ["personal", "team", "groupChat"],
+      "supportsFiles": true,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal"],
+          "commands": [
+            { "title": "help", "description": "How to use this agent" }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": [],
+  "webApplicationInfo": {
+    "id": "${BOT_APP_ID}",
+    "resource": "api://botid-${BOT_APP_ID}"
+  }
+}

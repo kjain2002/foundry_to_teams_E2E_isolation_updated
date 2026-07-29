@@ -1,0 +1,47 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "b8e7d3a2-4c1f-4e9a-9d6b-1a2c3e4f5a6b",
+  "developer": {
+    "name": "Boundary A Test",
+    "websiteUrl": "https://example.com",
+    "privacyUrl": "https://example.com/privacy",
+    "termsOfUseUrl": "https://example.com/terms"
+  },
+  "name": {
+    "short": "Boundary A Test",
+    "full": "Boundary A Test Agent"
+  },
+  "description": {
+    "short": "Test app to check Teams custom-app upload/publish permissions.",
+    "full": "A non-functional test app used only to verify whether a non-admin user can upload and publish a custom Teams app to a group in this tenant."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#0078D4",
+  "bots": [
+    {
+      "botId": "<your-oauth-client-id>",
+      "scopes": ["personal", "team", "groupChat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal"],
+          "commands": [
+            { "title": "help", "description": "How to use this agent" }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": [],
+  "webApplicationInfo": {
+    "id": "<your-oauth-client-id>",
+    "resource": "api://botid-<your-oauth-client-id>"
+  }
+}

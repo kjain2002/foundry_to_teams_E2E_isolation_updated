@@ -1,0 +1,88 @@
+# ============================================================================
+# terraform — example values
+# Copy to terraform.tfvars (or dev.tfvars / prod.tfvars) and edit.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# (A) Existing Foundry account by name + resource group (default path).
+# ----------------------------------------------------------------------------
+existing_account_name   = "my-existing-foundry"
+existing_resource_group = "my-foundry-rg"
+
+# The new project to add under that account.
+project_name = "my-new-project"
+display_name = "My New Project"
+description  = "Governed, agent-ready project created via Terraform"
+
+# Identity (default SystemAssigned). Agents/connections need a managed identity.
+identity_type = "SystemAssigned"
+
+# SKU: the proven demo deploys "S0". Set null to omit it from the body.
+project_sku_name = "S0"
+
+# Leave false if the account is already a Foundry account (the usual case).
+ensure_project_management = false
+
+tags = {
+  environment = "dev"
+  workload    = "myorg-foundry"
+}
+
+# ----------------------------------------------------------------------------
+# Observability — Application Insights (token usage / tracing)
+# ----------------------------------------------------------------------------
+enable_app_insights = true
+# observability_resource_group = "my-foundry-rg"   # defaults to existing_resource_group
+create_log_analytics         = true
+log_analytics_retention_days = 30
+app_insights_connection_name = "appinsights-connection"
+
+# ----------------------------------------------------------------------------
+# Model deployment (makes the project agent-ready).
+# To switch models, change these three lines — see MODEL-CHANGE.md.
+# ----------------------------------------------------------------------------
+deploy_model   = true
+model_name     = "gpt-4.1"
+model_version  = null            # null = service default; or pin e.g. "2025-04-14"
+model_sku_name = "GlobalStandard"
+model_capacity = 50              # thousands of TPM; draws from sub x region x model quota
+
+# ----------------------------------------------------------------------------
+# RBAC — grant an Entra GROUP (or user/SP) access on deploy.
+# Replace the object IDs with real Entra principals. Creating these requires the
+# Terraform principal to be Owner / User Access Administrator at the scope.
+#
+# The cadence showed: a Foundry/Azure AI role on the PROJECT is not enough on its
+# own — "Cognitive Services User" on the ACCOUNT is also needed before an agent
+# can be created. Both are included below.
+# ----------------------------------------------------------------------------
+account_role_assignments = {
+  # devs_cogsvc = {
+  #   principal_id         = "00000000-0000-0000-0000-000000000000" # Entra group objectId
+  #   role_definition_name = "Cognitive Services User"
+  #   principal_type       = "Group"
+  # }
+}
+
+project_role_assignments = {
+  # devs_ai_user = {
+  #   principal_id         = "00000000-0000-0000-0000-000000000000" # Entra group objectId
+  #   role_definition_name = "Azure AI User"   # use role_definition_id if renamed in the portal
+  #   principal_type       = "Group"
+  # }
+  # leads_project_manager = {
+  #   principal_id         = "11111111-1111-1111-1111-111111111111"
+  #   role_definition_name = "Azure AI Project Manager"
+  #   principal_type       = "Group"
+  # }
+}
+
+# ----------------------------------------------------------------------------
+# Alternative path (B): reference the account by raw ARM ID (e.g. a different
+# subscription). Comment out existing_account_name/resource_group above and
+# uncomment these. `location` is REQUIRED in this mode; so is
+# observability_resource_group when enable_app_insights = true.
+# ----------------------------------------------------------------------------
+# existing_account_id          = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<acct>"
+# location                     = "eastus2"
+# observability_resource_group = "<rg>"

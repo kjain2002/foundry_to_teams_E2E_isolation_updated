@@ -1,0 +1,46 @@
+# ============================================================================
+# PROD environment values  ->  terraform apply -var-file=environments/prod.tfvars
+# Least standing access: humans get little/no standing data-plane access; the
+# CI/CD service principal does the deploy. Tighten or remove the role grants and
+# let the pipeline identity own changes.
+# ============================================================================
+
+existing_account_name   = "myorg-foundry-prod"
+existing_resource_group = "rg-myorg-foundry-prod"
+
+project_name = "myorg-prod"
+display_name = "My Org (prod)"
+description  = "Production project — deployed via CI/CD only"
+
+identity_type    = "SystemAssigned"
+project_sku_name = "S0"
+
+tags = {
+  environment = "prod"
+  workload    = "myorg-foundry"
+}
+
+# Observability on, longer retention for prod.
+enable_app_insights          = true
+create_log_analytics         = true
+log_analytics_retention_days = 90
+
+# Pin the model version in prod for stability (avoid surprise upgrades).
+deploy_model                 = true
+model_name                   = "gpt-4.1"
+model_version                = "2025-04-14" # pin a known-good version in prod
+model_sku_name               = "GlobalStandard"
+model_capacity               = 100
+model_version_upgrade_option = "NoAutoUpgrade"
+
+# Prod: prefer NO standing human data-plane access. Grant a small operators group
+# read/runtime only as needed; everything else flows through the pipeline.
+account_role_assignments = {}
+
+project_role_assignments = {
+  # operators = {
+  #   principal_id         = "00000000-0000-0000-0000-000000000000" # prod operators Entra group
+  #   role_definition_name = "Azure AI User"
+  #   principal_type       = "Group"
+  # }
+}

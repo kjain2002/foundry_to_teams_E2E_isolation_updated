@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Decoding a generalized bot messaging endpoint</title>
+  <script>
+    (() => {
+      const theme = new URLSearchParams(window.location.search).get("clawpilotTheme") || "light";
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root { color-scheme:light; --ink:#1b1a19; --muted:#605e5c; --line:#e6e4e2; --blue-bg:#eef4fb; --blue-ln:#cfe1f5; --blue-fg:#0078d4; --orange-bg:#fff4ce; --orange-ln:#f1cb82; --orange-fg:#b26a00; --green-bg:#eef7ee; --green-ln:#cfe8cf; --green-fg:#107c10; --purple-bg:#f4eefb; --purple-ln:#e0d0f0; --purple-fg:#5c2d91; --gray-bg:#f3f2f1; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05); }
+    html[data-theme="dark"] { color-scheme:dark; --ink:#dedede; --muted:#b0b0b0; --line:#474747; --blue-bg:#283b4e; --blue-ln:#4f7da1; --blue-fg:#78b9ef; --orange-bg:#4c412e; --orange-ln:#8b7042; --orange-fg:#e5a34c; --green-bg:#314536; --green-ln:#537b59; --green-fg:#6cbd70; --purple-bg:#44384f; --purple-ln:#725b86; --purple-fg:#c8a8e5; --gray-bg:#2e2e2e; --shadow:0 4px 14px rgba(0,0,0,.28); }
+    * { box-sizing:border-box; } body { margin:0; background:#fff; color:var(--ink); font-family:"Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif; -webkit-font-smoothing:antialiased; } html[data-theme="dark"] body { background:#1f1e1d; }
+    .canvas { max-width:1200px; margin:0 auto; padding:28px 34px 34px; } h1 { margin:0 0 4px; text-align:center; font-size:24px; font-weight:650; } .sub { margin:0 0 22px; text-align:center; color:var(--muted); font-size:14px; }
+    .urlbar { display:flex; flex-wrap:wrap; justify-content:center; align-items:stretch; gap:0; padding:20px 16px 14px; border:1px solid var(--line); border-radius:14px; background:var(--gray-bg); font-family:"Cascadia Code",Consolas,"Courier New",monospace; }.seg { position:relative; display:flex; flex-direction:column; align-items:center; }.seg .txt { padding:9px 11px; font-size:16px; font-weight:700; border-radius:8px; border:1px solid; white-space:nowrap; }.seg .mk { margin-top:9px; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff; font-family:"Segoe UI",sans-serif; }.seg.scheme .txt { background:transparent; border-color:transparent; color:var(--muted); font-weight:400; }.seg.host .txt { background:var(--orange-bg); border-color:var(--orange-ln); color:var(--orange-fg); }.seg.host .mk { background:var(--orange-fg); }.seg.route .txt { background:var(--blue-bg); border-color:var(--blue-ln); color:var(--blue-fg); }.seg.route .mk { background:var(--blue-fg); }.sep { display:flex; align-items:flex-start; padding-top:9px; font-size:16px; font-weight:700; color:var(--muted); }
+    .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:18px; }.card { border:1px solid var(--line); border-radius:11px; background:#fff; box-shadow:var(--shadow); padding:12px 13px; } html[data-theme="dark"] .card { background:#292929; }.card .h { display:flex; align-items:center; gap:8px; margin-bottom:5px; }.card .n { width:20px; height:20px; border-radius:50%; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }.card.host .n { background:var(--orange-fg); }.card.route .n { background:var(--blue-fg); }.card.choice .n { background:var(--purple-fg); }.card .t { font-size:12.5px; font-weight:700; }.card p { margin:0; color:var(--muted); font-size:11.5px; line-height:1.4; }.card code { font-family:"Cascadia Code",Consolas,monospace; font-size:10.8px; }
+    .maps { margin-top:22px; border:1px solid var(--line); border-radius:14px; background:var(--gray-bg); padding:16px; }.maps h2 { margin:0 0 12px; font-size:13px; letter-spacing:.6px; text-align:center; color:var(--muted); }.chain { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:0; }.cnode { width:160px; min-height:98px; display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; padding:11px 9px; background:#fff; border:1px solid var(--line); border-radius:11px; box-shadow:var(--shadow); } html[data-theme="dark"] .cnode { background:#292929; }.cnode .cn { font-size:12.5px; font-weight:700; line-height:1.15; }.cnode .cs { color:var(--muted); font-size:10.2px; line-height:1.25; }.from { font-family:"Cascadia Code",Consolas,monospace; font-size:9.6px; padding:1px 6px; border-radius:999px; background:var(--orange-bg); color:var(--orange-fg); }.carr { width:52px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; color:var(--muted); }.carr svg { width:100%; height:16px; }.split { display:flex; flex-direction:column; gap:9px; }.branch { display:flex; align-items:center; gap:8px; padding:9px 11px; border-radius:9px; font-size:11.5px; line-height:1.3; max-width:460px; }.branch.custom { background:var(--blue-bg); border:1px solid var(--blue-ln); }.branch.native { background:var(--purple-bg); border:1px solid var(--purple-ln); }.branch b { font-size:11.5px; }.pill { font-family:"Cascadia Code",Consolas,monospace; font-size:10px; padding:1px 6px; border-radius:999px; background:#fff; color:var(--ink); border:1px solid var(--line); white-space:nowrap; } html[data-theme="dark"] .pill { background:#1f1e1d; }
+    .requirements { margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }.foot { display:flex; gap:11px; align-items:flex-start; padding:13px 16px; border:1px solid var(--green-ln); border-radius:10px; background:var(--green-bg); }.foot.orange { border-color:var(--orange-ln); background:var(--orange-bg); }.foot .b { flex:0 0 auto; width:24px; height:24px; border-radius:50%; background:var(--green-fg); color:#fff; display:grid; place-items:center; font-weight:700; font-size:13px; }.foot.orange .b { background:var(--orange-fg); }.foot strong { font-size:12.5px; }.foot span { color:var(--muted); font-size:11.5px; line-height:1.35; }.companion { margin-top:11px; text-align:center; font-size:11.5px; color:var(--muted); }.companion code { font-family:"Cascadia Code",Consolas,monospace; } @media (max-width:820px) { .cards { grid-template-columns:1fr; }.chain { overflow-x:auto; }.requirements { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <h1>Decoding a generalized bot messaging endpoint</h1>
+    <p class="sub">An example Bot Service <strong>Messaging endpoint</strong> when there is no API Management layer. The public router and TLS proxy can be a firewall, load balancer, CDN, Application Gateway, or another network appliance.</p>
+
+    <div class="urlbar" aria-label="Generalized messaging endpoint URL">
+      <div class="seg scheme"><span class="txt">https://</span><span class="mk" style="visibility:hidden">.</span></div>
+      <div class="seg host"><span class="txt">teams-agent.contoso.com</span><span class="mk">1</span></div>
+      <div class="sep">/</div>
+      <div class="seg route"><span class="txt">messages</span><span class="mk">2</span></div>
+    </div>
+
+    <div class="cards">
+      <div class="card host"><div class="h"><span class="n">1</span><span class="t">Public hostname</span></div><p>A hostname you control, with DNS resolving to the public entry point. It does <b>not</b> reveal or expose Foundry's private IP. The router can select a private destination by hostname, listener, path, or routing rule.</p></div>
+      <div class="card route"><div class="h"><span class="n">2</span><span class="t">Message path</span></div><p>A simple stable path for Bot Channel Service <code>POST</code>s. It is only an example: the public endpoint can use any path convention that the routing component and Bot Service registration agree on.</p></div>
+      <div class="card choice"><div class="h"><span class="n">3</span><span class="t">Routing decision</span></div><p>The routing rule, not the URL format, decides whether traffic reaches Foundry's native <code>activityProtocol</code> endpoint or a private translator container.</p></div>
+    </div>
+
+    <div class="maps" aria-label="How the generalized endpoint maps to the flow">
+      <h2>HOW THE GENERALIZED ENDPOINT MAPS TO THE FLOW</h2>
+      <div class="chain">
+        <div class="cnode"><div class="cn">Bot Channel Service</div><div class="cs">POSTs a signed Bot activity to the registered endpoint</div></div>
+        <div class="carr"><svg viewBox="0 0 52 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h38M38 3l9 5-9 5"/></svg></div>
+        <div class="cnode"><span class="from">1 host + 2 path</span><div class="cn">Public traffic router</div><div class="cs">Public IP, TLS termination, and proxying to the private network</div></div>
+        <div class="carr"><svg viewBox="0 0 52 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h38M38 3l9 5-9 5"/></svg></div>
+        <div class="split">
+          <div class="branch native"><span class="pill">native rule</span><div><b>NATIVE</b> &rarr; private Foundry <span class="pill">activityProtocol</span> endpoint. The router only proxies; no translation service is deployed.</div></div>
+          <div class="branch custom"><span class="pill">custom rule</span><div><b>CUSTOM</b> &rarr; private translator container &rarr; Foundry <span class="pill">Responses API</span>. The translator is behind the router directly, not behind APIM.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <section class="requirements" aria-label="Network requirements"><div class="foot"><span class="b">1</span><div><strong>Required on both private runtime routes</strong><span>The public entry point must route traffic inward, and TLS must terminate somewhere in the architecture. This can be one component or a public firewall followed by a private reverse proxy.</span></div></div><div class="foot orange"><span class="b">2</span><div><strong>Security choices at the boundary</strong><span>Restrict Bot Channel Adapter source ranges. Foundry validates the Bot JWT and user authorization; validate the JWT at the router as an additional control only when your security boundary requires it.</span></div></div></section>
+    <p class="companion">APIM-specific version: <code>messaging_endpoint_decoded.html</code> &nbsp;·&nbsp; Communication comparison: <code>bot_service_communication_native_vs_custom.html</code></p>
+  </main>
+</body>
+</html>

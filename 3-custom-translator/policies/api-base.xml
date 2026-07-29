@@ -1,0 +1,63 @@
+<!--
+    APIM API-level inbound policy (foundry-bot API).
+
+    Order of operations:
+      1. validate-jwt — the Microsoft Bot Channel Service signs every call with
+         an AAD token whose `aud` claim is the bot's Entra AppId. We trust any
+         AppId listed in the audiences below. The publisher (publisher.py)
+         REWRITES this policy on every publish so that each registered bot has
+         its own `<value>` element. The `{{allowed-bot-audiences}}` named value
+         is kept for backward compatibility and observability only — APIM does
+         NOT split named-value content by separator, so a CSV in a single
+         `<value>` is treated as one expected audience and rejects all tokens.
+      2. set-backend-service — force the call to the Foundry private endpoint.
+         APIM's NIC sits in the VNet, so the hostname resolves to the PE IP via
+         the linked privatelink.services.ai.azure.com zone.
+      3. Per-operation policy then rewrites the URI to /agents/{agentId}/messages.
+-->
+<policies>
+  <inbound>
+    <base />
+
+    <!-- 1. Validate Microsoft Bot Channel Service token.
+         Two openid-config entries are required because:
+           * MultiTenant bots  -> token signed via login.botframework.com (v1 metadata).
+           * SingleTenant bots -> token signed by AAD for the bot's home tenant
+             (issuer https://sts.windows.net/{tenantId}/, metadata under login.microsoftonline.com).
+           * UserAssignedMSI bots -> same AAD-tenant metadata as SingleTenant.
+         APIM's validate-jwt will try each metadata source until one validates. -->
+    <validate-jwt header-name="Authorization"
+                  failed-validation-httpcode="401"
+                  failed-validation-error-message="Unauthorized: invalid bot token"
+                  require-scheme="Bearer"
+                  require-signed-tokens="true">
+      <openid-config url="https://login.botframework.com/v1/.well-known/openidconfiguration" />
+      <openid-config url="https://login.microsoftonline.com/{{bot-tenant-id}}/v2.0/.well-known/openid-configuration" />
+      <required-claims>
+        <!-- One <value> per allowed bot AppId. publisher.py rewrites this list
+             on every publish based on the `allowed-bot-audiences` named value.
+             A single comma-separated <value> WILL NOT work — APIM treats the
+             entire string as one audience and rejects all tokens with
+             TokenClaimValueMismatch. -->
+        <claim name="aud" match="any">
+          <value>{{allowed-bot-audiences}}</value>
+        </claim>
+      </required-claims>
+    </validate-jwt>
+
+    <!-- 2. Pin backend to the Foundry private endpoint. -->
+    <set-backend-service base-url="{{foundry-backend-url}}" />
+
+    <!-- 3. Strip the inbound subscription header if present (we don't require one). -->
+    <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />
+  </inbound>
+  <backend>
+    <forward-request timeout="120" />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

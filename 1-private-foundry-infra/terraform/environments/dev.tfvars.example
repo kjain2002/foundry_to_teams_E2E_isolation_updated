@@ -1,0 +1,49 @@
+# ============================================================================
+# DEV environment values  ->  terraform apply -var-file=environments/dev.tfvars
+# Devs get broad-but-scoped access; a model is deployed for hands-on building.
+# ============================================================================
+
+existing_account_name   = "myorg-foundry-dev"
+existing_resource_group = "rg-myorg-foundry-dev"
+
+project_name = "myorg-dev"
+display_name = "My Org (dev)"
+description  = "Dev project — agent building + experimentation"
+
+identity_type    = "SystemAssigned"
+project_sku_name = "S0"
+
+tags = {
+  environment = "dev"
+  workload    = "myorg-foundry"
+}
+
+# Observability on.
+enable_app_insights          = true
+create_log_analytics         = true
+log_analytics_retention_days = 30
+
+# A model so devs can create agents immediately.
+deploy_model   = true
+model_name     = "gpt-4.1"
+model_version  = null
+model_sku_name = "GlobalStandard"
+model_capacity = 50
+
+# Dev team Entra group gets data-plane access on the project + Cognitive Services
+# User on the account (the combo needed to create agents).
+account_role_assignments = {
+  dev_team_cogsvc = {
+    principal_id         = "00000000-0000-0000-0000-000000000000" # REPLACE: dev Entra group objectId
+    role_definition_name = "Cognitive Services User"
+    principal_type       = "Group"
+  }
+}
+
+project_role_assignments = {
+  dev_team_ai_user = {
+    principal_id         = "00000000-0000-0000-0000-000000000000" # REPLACE: dev Entra group objectId
+    role_definition_name = "Azure AI User"
+    principal_type       = "Group"
+  }
+}

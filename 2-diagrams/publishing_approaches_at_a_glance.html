@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Publishing Approaches - At a Glance</title>
+  <script>
+    (() => {
+      const theme = new URLSearchParams(window.location.search).get("clawpilotTheme") || "light";
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light; --cp-bg:#f7f4ef; --cp-bg-elevated:#fcfbf8; --cp-surface:#ffffff; --cp-surface-soft:#f5f5f5; --cp-border:#dedede; --cp-border-strong:#919191; --cp-text:#242424; --cp-text-muted:#5c5c5c; --cp-text-soft:#6f6f6f; --cp-accent:#5c2d91; --cp-accent-hover:#4c2478; --cp-accent-soft:#f1eaf8; --cp-accent-fg:#ffffff; --cp-success:#107c10; --cp-danger:#dc2626; --cp-warning:#b26a00; --cp-link:#0078d4; --cp-link-soft:#eaf3fc; --cp-link-line:#b6d8f5; --cp-accent-line:#d9c6ec; --cp-success-soft:#e6f4e6; --cp-success-line:#bfe3bf; --cp-warning-soft:#fff6e5; --cp-warning-line:#f0d9a6; --cp-shadow:0 18px 48px rgba(0,0,0,.12); --cp-overlay:rgba(255,255,255,.8); --cp-panel:rgba(255,255,255,.86); --cp-panel-strong:rgba(255,255,255,.96); --cp-sheen:rgba(255,255,255,.55); --cp-highlight:#f1eaf8;
+    }
+    html[data-theme="dark"] {
+      color-scheme:dark; --cp-bg:#3d3b3a; --cp-bg-elevated:#343231; --cp-surface:#292929; --cp-surface-soft:#2e2e2e; --cp-border:#474747; --cp-border-strong:#5f5f5f; --cp-text:#dedede; --cp-text-muted:#919191; --cp-text-soft:#b0b0b0; --cp-accent:#c8a8e5; --cp-accent-hover:#d6bbeb; --cp-accent-soft:#44384f; --cp-accent-fg:#1a1a1a; --cp-success:#6cbd70; --cp-danger:#f87171; --cp-warning:#e5a34c; --cp-link:#78b9ef; --cp-link-soft:#283b4e; --cp-link-line:#4f7da1; --cp-accent-line:#725b86; --cp-success-soft:#314536; --cp-success-line:#537b59; --cp-warning-soft:#4c412e; --cp-warning-line:#8b7042; --cp-shadow:0 18px 48px rgba(0,0,0,.32); --cp-overlay:rgba(41,41,41,.88); --cp-panel:rgba(41,41,41,.72); --cp-panel-strong:rgba(41,41,41,.96); --cp-sheen:rgba(255,255,255,.04); --cp-highlight:#44384f;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--cp-bg); color:var(--cp-text); font-family:"Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif; }
+    main { max-width:1280px; margin:0 auto; padding:38px 40px; }
+    .eyebrow { margin:0 0 12px; color:var(--cp-success); font-size:13px; font-weight:700; letter-spacing:1.8px; }
+    h1 { margin:0; font-size:36px; line-height:1.12; letter-spacing:0; }
+    .sub { margin:10px 0 24px; color:var(--cp-text-muted); font-size:16px; }
+    .matrix { overflow:hidden; border:1px solid var(--cp-border); border-radius:10px; background:var(--cp-surface); box-shadow:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14); }
+    .row { display:grid; grid-template-columns:180px 1fr 1fr; border-top:1px solid var(--cp-border); }
+    .row:first-child { border-top:0; }
+    .cell { padding:15px 18px; font-size:14px; line-height:1.35; }
+    .label { display:flex; align-items:center; font-weight:700; background:var(--cp-surface-soft); }
+    .custom { background:var(--cp-link-soft); border-left:1px solid var(--cp-link-line); }
+    .native { background:var(--cp-accent-soft); border-left:1px solid var(--cp-accent-line); }
+    .head { padding:17px 18px; color:var(--cp-accent-fg); font-size:17px; font-weight:700; }
+    .head.custom { background:var(--cp-link); }
+    .head.native { background:var(--cp-accent); }
+    .head.label { color:var(--cp-text-muted); font-size:12px; letter-spacing:1px; }
+    .pill { display:inline-block; margin-bottom:6px; padding:3px 8px; border-radius:999px; color:var(--cp-accent-fg); font-size:11px; font-weight:700; }
+    .custom .pill { background:var(--cp-link); }
+    .native .pill { background:var(--cp-accent); }
+    .takeaway { display:flex; align-items:center; gap:12px; margin-top:20px; padding:15px 18px; border:1px solid var(--cp-success-line); border-radius:10px; background:var(--cp-success-soft); }
+    .takeaway strong { font-size:15px; }
+    .takeaway span { color:var(--cp-text-muted); font-size:14px; }
+    @media (max-width:720px) { main { padding:26px 18px; } h1 { font-size:28px; } .row { grid-template-columns:1fr; } .head.label { display:none; } .custom,.native { border-left:0; border-top:1px solid var(--cp-border); } .label { padding-bottom:8px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">PRIVATE FOUNDRY TO TEAMS</p>
+    <h1>Two approaches, at a glance</h1>
+    <p class="sub">The practical differences that matter when selecting a publishing path.</p>
+    <section class="matrix" aria-label="Approach comparison">
+      <div class="row">
+        <div class="cell head label">COMPARE</div>
+        <div class="cell head custom">Custom Teams bridge</div>
+        <div class="cell head native">Native Foundry publish</div>
+      </div>
+      <div class="row">
+        <div class="cell label">Teams delivery</div>
+        <div class="cell custom"><span class="pill">CUSTOM APP</span><br />Teams bot and uploaded app package.</div>
+        <div class="cell native"><span class="pill">CATALOG AGENT</span><br />Native Teams and Microsoft 365 agent catalog entry.</div>
+      </div>
+      <div class="row">
+        <div class="cell label">Who owns the bridge?</div>
+        <div class="cell custom">We own APIM, the translator, routing, and bot behavior.</div>
+        <div class="cell native">Foundry owns the activity protocol and catalog publication.</div>
+      </div>
+      <div class="row">
+        <div class="cell label">User-token control</div>
+        <div class="cell custom">Highest control for delegated OAuth and custom Teams consent behavior.</div>
+        <div class="cell native">Use Foundry's supported authorization model and tool authentication.</div>
+      </div>
+      <div class="row">
+        <div class="cell label">Distribution</div>
+        <div class="cell custom">Sideload or distribute through Teams administration.</div>
+        <div class="cell native">`Shared` for personal visibility or `Tenant` after admin approval.</div>
+      </div>
+      <div class="row">
+        <div class="cell label">Operational cost</div>
+        <div class="cell custom">More components and more flexibility.</div>
+        <div class="cell native">Less custom runtime and lower operational ownership.</div>
+      </div>
+    </section>
+    <div class="takeaway"><strong>Decision:</strong><span>Choose custom for control. Choose native for catalog publishing and a smaller integration footprint.</span></div>
+  </main>
+</body>
+</html>

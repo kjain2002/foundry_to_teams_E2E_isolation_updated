@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Native REST Publish - Test Summary</title>
+  <script>
+    (() => {
+      const theme = new URLSearchParams(window.location.search).get("clawpilotTheme") || "light";
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light; --cp-bg:#f7f4ef; --cp-bg-elevated:#fcfbf8; --cp-surface:#ffffff; --cp-surface-soft:#f5f5f5; --cp-border:#dedede; --cp-border-strong:#919191; --cp-text:#242424; --cp-text-muted:#5c5c5c; --cp-text-soft:#6f6f6f; --cp-accent:#5c2d91; --cp-accent-hover:#4c2478; --cp-accent-soft:#f1eaf8; --cp-accent-fg:#ffffff; --cp-success:#107c10; --cp-danger:#dc2626; --cp-warning:#b26a00; --cp-link:#0078d4; --cp-link-soft:#eaf3fc; --cp-link-line:#b6d8f5; --cp-accent-line:#d9c6ec; --cp-success-soft:#e6f4e6; --cp-success-line:#bfe3bf; --cp-warning-soft:#fff6e5; --cp-warning-line:#f0d9a6; --cp-shadow:0 18px 48px rgba(0,0,0,.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme:dark; --cp-bg:#3d3b3a; --cp-bg-elevated:#343231; --cp-surface:#292929; --cp-surface-soft:#2e2e2e; --cp-border:#474747; --cp-border-strong:#5f5f5f; --cp-text:#dedede; --cp-text-muted:#919191; --cp-text-soft:#b0b0b0; --cp-accent:#c8a8e5; --cp-accent-hover:#d6bbeb; --cp-accent-soft:#44384f; --cp-accent-fg:#1a1a1a; --cp-success:#6cbd70; --cp-danger:#f87171; --cp-warning:#e5a34c; --cp-link:#78b9ef; --cp-link-soft:#283b4e; --cp-link-line:#4f7da1; --cp-accent-line:#725b86; --cp-success-soft:#314536; --cp-success-line:#537b59; --cp-warning-soft:#4c412e; --cp-warning-line:#8b7042; --cp-shadow:0 18px 48px rgba(0,0,0,.32);
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--cp-bg); color:var(--cp-text); font-family:"Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif; }
+    main { max-width:1280px; margin:0 auto; padding:34px 40px; }
+    .eyebrow { margin:0 0 10px; color:var(--cp-success); font-size:13px; font-weight:700; letter-spacing:1.8px; }
+    h1 { margin:0; font-size:34px; line-height:1.12; }
+    .sub { margin:9px 0 22px; color:var(--cp-text-muted); font-size:16px; max-width:920px; }
+    .grid { display:grid; grid-template-columns:1.15fr 1fr; gap:22px; }
+    .panel { border:1px solid var(--cp-border); border-radius:10px; background:var(--cp-surface); box-shadow:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14); overflow:hidden; }
+    .panel h2 { margin:0; padding:14px 18px; font-size:13px; letter-spacing:1px; color:var(--cp-accent-fg); background:var(--cp-accent); }
+    .panel.custom h2 { background:var(--cp-link); }
+    ol.steps { margin:0; padding:8px 8px 10px 8px; list-style:none; counter-reset:s; }
+    ol.steps li { position:relative; padding:11px 14px 11px 46px; border-top:1px solid var(--cp-border); counter-increment:s; font-size:14px; line-height:1.35; }
+    ol.steps li:first-child { border-top:0; }
+    ol.steps li::before { content:counter(s); position:absolute; left:12px; top:11px; width:24px; height:24px; border-radius:50%; background:var(--cp-accent-soft); color:var(--cp-accent); border:1px solid var(--cp-accent-line); font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+    ol.steps li strong { display:block; font-size:14px; margin-bottom:1px; }
+    ol.steps li span { color:var(--cp-text-muted); font-size:13px; }
+    .results { padding:10px; display:flex; flex-direction:column; gap:10px; }
+    .res { display:flex; gap:11px; align-items:flex-start; padding:12px 14px; border-radius:9px; border:1px solid var(--cp-border); background:var(--cp-surface-soft); }
+    .res.ok { background:var(--cp-success-soft); border-color:var(--cp-success-line); }
+    .res.warn { background:var(--cp-warning-soft); border-color:var(--cp-warning-line); }
+    .res .ic { flex:0 0 auto; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; }
+    .res.ok .ic { background:var(--cp-success); }
+    .res.warn .ic { background:var(--cp-warning); }
+    .res b { font-size:14px; } .res p { margin:2px 0 0; color:var(--cp-text-muted); font-size:13px; line-height:1.32; }
+    .note { margin-top:18px; display:flex; align-items:center; gap:11px; padding:13px 16px; border:1px dashed var(--cp-border-strong); border-radius:10px; color:var(--cp-text-muted); font-size:13.5px; }
+    .note strong { color:var(--cp-text); }
+    .takeaway { margin-top:14px; display:flex; align-items:center; gap:12px; padding:15px 18px; border:1px solid var(--cp-success-line); border-radius:10px; background:var(--cp-success-soft); }
+    .takeaway strong { font-size:15px; } .takeaway span { color:var(--cp-text-muted); font-size:14px; }
+    @media (max-width:820px) { main { padding:24px 18px; } h1 { font-size:26px; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">PRIVATE FOUNDRY TO TEAMS</p>
+    <h1>We validated the native REST publish path</h1>
+    <p class="sub">Using Microsoft's official REST API — the programmatic equivalent of the portal's <em>Publish to Teams</em> button — against the private Foundry project, on throwaway copies so nothing already in production was affected.</p>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>HOW WE TESTED IT</h2>
+        <ol class="steps">
+          <li><strong>Identity</strong><span>Retrieved each agent's identity and the tenant ID.</span></li>
+          <li><strong>Bot Service</strong><span>Created an Azure Bot Service per agent with the Teams channel enabled.</span></li>
+          <li><strong>Activity protocol</strong><span>Enabled the agent's activity endpoint and Bot Service authorization.</span></li>
+          <li><strong>Publish</strong><span>Called the Microsoft 365 publish API with <em>Shared</em> scope — returned a Teams app and catalog ID.</span></li>
+          <li><strong>Controlled ingress</strong><span>Routed inbound Teams traffic through our public entry point to the private Foundry endpoint. Additive only.</span></li>
+        </ol>
+      </section>
+
+      <section class="panel custom">
+        <h2>WHAT WE FOUND</h2>
+        <div class="results">
+          <div class="res ok"><span class="ic">&#10003;</span><div><b>Publishing worked</b><p>Both agents accepted by the publish API and registered in the Teams / Copilot catalog.</p></div></div>
+          <div class="res ok"><span class="ic">&#10003;</span><div><b>Inbound path verified</b><p>Ingress accepts the route and rejects unauthenticated calls — plumbing to the private endpoint is in place.</p></div></div>
+          <div class="res ok"><span class="ic">&#10003;</span><div><b>Search-grounded agent behaves as expected</b><p>Standard question-and-answer over indexed content works cleanly.</p></div></div>
+          <div class="res warn"><span class="ic">!</span><div><b>MCP agent hits the known limit</b><p>Per-user delegated tool auth and interactive tool consent are not carried through the native path — matches Microsoft's documented behavior.</p></div></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="note"><span>&#128272;</span><span>Tested against <strong>copies</strong> of the agents (<strong>*-restapi</strong>) with their own Bot Services. All shared-infrastructure changes were additive — <strong>existing published agents were untouched</strong>.</span></div>
+
+    <div class="takeaway"><strong>Takeaway:</strong><span>Native REST is ideal for standard and search-grounded agents with the smallest footprint. Use the custom bridge when per-user delegated tokens or tool consent are required.</span></div>
+  </main>
+</body>
+</html>

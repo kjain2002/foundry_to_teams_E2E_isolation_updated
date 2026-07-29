@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Native REST Publish Flow - Private Foundry to Teams and Microsoft 365 Copilot</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme = param || "light";
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+        --cp-accent: #5c2d91;
+        --cp-accent-hover: #4c2478;
+        --cp-accent-soft: #f1eaf8;
+      --cp-accent-fg: #ffffff;
+        --cp-success: #107c10;
+      --cp-danger: #dc2626;
+        --cp-warning: #b26a00;
+      --cp-link: #0078d4;
+        --cp-link-soft: #eaf3fc;
+        --cp-link-line: #b6d8f5;
+        --cp-accent-line: #d9c6ec;
+        --cp-success-soft: #e6f4e6;
+        --cp-success-line: #bfe3bf;
+        --cp-warning-soft: #fff6e5;
+        --cp-warning-line: #f0d9a6;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+        --cp-accent: #c8a8e5;
+        --cp-accent-hover: #d6bbeb;
+        --cp-accent-soft: #44384f;
+      --cp-accent-fg: #1a1a1a;
+        --cp-success: #6cbd70;
+      --cp-danger: #f87171;
+        --cp-warning: #e5a34c;
+      --cp-link: #4da6ff;
+        --cp-link-soft: #283b4e;
+        --cp-link-line: #4f7da1;
+        --cp-accent-line: #725b86;
+        --cp-success-soft: #314536;
+        --cp-success-line: #537b59;
+        --cp-warning-soft: #4c412e;
+        --cp-warning-line: #8b7042;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+      --cp-highlight: var(--cp-accent-soft);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--cp-bg);
+      color: var(--cp-text);
+      font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .canvas { max-width: 1320px; margin: 0 auto; padding: 32px 28px 44px; }
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 6px; }
+    h1 { margin: 0; font-size: 26px; letter-spacing: 0; line-height: 1.2; }
+    .sub { margin: 5px 0 0; color: var(--cp-text-muted); font-size: 14px; }
+    .legend { display: flex; flex-direction: column; gap: 7px; flex: 0 0 auto; padding: 12px 16px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface); box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14); }
+    .legend-row { display: flex; align-items: center; gap: 9px; color: var(--cp-text-muted); font-size: 13px; }
+    .dot { width: 14px; height: 14px; border-radius: 50%; }
+    .dot.click { background: var(--cp-link); }
+    .dot.auto { background: var(--cp-accent); }
+    .dot.done { background: var(--cp-success); }
+
+    .lane { position: relative; margin-top: 22px; padding: 16px 18px 20px; overflow: hidden; border: 1px solid var(--cp-border); border-radius: 16px; background: var(--cp-surface); box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14); }
+    .lane::before { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; content: ""; }
+    .lane.click::before { background: var(--cp-link); }
+    .lane.auto::before { background: var(--cp-accent); }
+    .lane.done::before { background: var(--cp-success); }
+    .lane-head { display: flex; align-items: center; gap: 10px; margin: 2px 0 14px 4px; }
+    .lane-badge { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; color: var(--cp-accent-fg); font-size: 15px; font-weight: 700; }
+    .click .lane-badge { background: var(--cp-link); }
+    .auto .lane-badge { background: var(--cp-accent); }
+    .done .lane-badge { background: var(--cp-success); }
+    .lane-title { font-size: 16px; font-weight: 700; }
+    .lane-note { margin-left: 2px; color: var(--cp-text-muted); font-size: 13px; }
+    .flow { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; }
+    .card { position: relative; display: flex; flex: 1 1 0; flex-direction: column; align-items: center; min-width: 150px; gap: 8px; padding: 14px 12px 12px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface-soft); text-align: center; }
+    .click .card { background: var(--cp-link-soft); border-color: var(--cp-link-line); }
+    .auto .card { background: var(--cp-accent-soft); border-color: var(--cp-accent-line); }
+    .done .card { background: var(--cp-success-soft); border-color: var(--cp-success-line); }
+    .card.star { box-shadow: 0 0 0 2px var(--cp-success) inset; }
+    .number { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; color: var(--cp-accent-fg); font-size: 13px; font-weight: 700; }
+    .click .number { background: var(--cp-link); }
+    .auto .number { background: var(--cp-accent); }
+    .done .number { background: var(--cp-success); }
+    .icon { width: 44px; height: 44px; margin-top: 8px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+    .click .icon { color: var(--cp-link); }
+    .auto .icon { color: var(--cp-accent); }
+    .done .icon { color: var(--cp-success); }
+    .card h3 { margin: 0; font-size: 14.5px; line-height: 1.2; }
+    .card p { margin: 0; color: var(--cp-text-muted); font-size: 12px; line-height: 1.3; }
+    .arrow { display: flex; flex: 0 0 26px; align-items: center; justify-content: center; color: var(--cp-border-strong); }
+    .arrow svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.2; }
+    .tag { position: absolute; top: -11px; left: 50%; padding: 3px 9px; transform: translateX(-50%); border-radius: 10px; background: var(--cp-success); color: var(--cp-accent-fg); font-size: 10.5px; font-weight: 700; letter-spacing: 0; white-space: nowrap; }
+
+    .runtime { margin-top: 22px; padding: 20px; border: 1px solid var(--cp-border); border-radius: 16px; background: var(--cp-bg-elevated); }
+    .runtime-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 15px; }
+    .runtime h2 { margin: 0; font-size: 17px; }
+    .runtime-note { color: var(--cp-text-muted); font-size: 13px; }
+    .runtime-grid { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); align-items: stretch; gap: 8px; }
+    .node { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 125px; gap: 7px; padding: 12px 9px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface); text-align: center; }
+    .node .icon { margin-top: 0; width: 36px; height: 36px; color: var(--cp-accent); }
+    .node h3 { margin: 0; font-size: 13px; line-height: 1.2; }
+    .node p { margin: 0; color: var(--cp-text-muted); font-size: 11px; line-height: 1.3; }
+    .node.edge { background: var(--cp-warning-soft); border-color: var(--cp-warning-line); }
+    .node.edge .icon { color: var(--cp-warning); }
+    .node.foundry { background: var(--cp-success-soft); border-color: var(--cp-success-line); }
+    .node.foundry .icon { color: var(--cp-success); }
+    .runtime-arrow { display: flex; align-items: center; justify-content: center; color: var(--cp-border-strong); }
+    .runtime-arrow svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.2; }
+    .return-path { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 0; padding: 10px 12px; border: 1px dashed var(--cp-border-strong); border-radius: 10px; color: var(--cp-text-muted); font-size: 12px; }
+    .return-path strong { color: var(--cp-text); }
+
+    .footer { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
+    .callout { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface); font-size: 13px; line-height: 1.35; }
+    .callout.warning { border-color: var(--cp-warning-line); background: var(--cp-warning-soft); }
+    .callout.success { border-color: var(--cp-success-line); background: var(--cp-success-soft); }
+    .callout-icon { flex: 0 0 auto; width: 24px; height: 24px; color: var(--cp-accent); fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .callout.warning .callout-icon { color: var(--cp-warning); }
+    .callout.success .callout-icon { color: var(--cp-success); }
+    .callout b { color: var(--cp-text); }
+
+    @media (max-width: 900px) {
+      header { flex-direction: column; }
+      .runtime-grid { grid-template-columns: repeat(4, minmax(110px, 1fr)); }
+      .runtime-arrow { display: none; }
+    }
+    @media (max-width: 620px) {
+      .canvas { padding: 22px 14px 32px; }
+      .card { flex-basis: 42%; min-width: 135px; }
+      .flow .arrow { display: none; }
+      .runtime-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      .footer { grid-template-columns: 1fr; }
+      .lane-note { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <header>
+      <div>
+        <h1>Native REST publish - what happens when you publish an agent</h1>
+        <p class="sub">Private-network Foundry agent to Teams and Microsoft 365 Copilot - Foundry owns the activity protocol</p>
+      </div>
+      <div class="legend" aria-label="Diagram legend">
+        <div class="legend-row"><span class="dot click"></span>You run or submit this</div>
+        <div class="legend-row"><span class="dot auto"></span>Foundry configures this</div>
+        <div class="legend-row"><span class="dot done"></span>Published outcome</div>
+      </div>
+    </header>
+
+    <section class="lane click">
+      <div class="lane-head">
+        <span class="lane-badge">1</span>
+        <span class="lane-title">Prepare the publish request</span>
+        <span class="lane-note">one-time Bot Service setup, then one REST request per agent</span>
+      </div>
+      <div class="flow">
+        <div class="card">
+          <span class="number">1</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+          <h3>Choose tested agent</h3>
+          <p>active Foundry version</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">2</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="8"/></svg>
+          <h3>Get agent identity</h3>
+          <p>principal ID + tenant ID</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">3</span>
+          <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="3"/><path d="M8 21l3-4M16 21l-3-4"/></svg>
+          <h3>Create Bot Service</h3>
+          <p>Teams channel + agent identity</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">4</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="M7 10h10M7 14h6"/></svg>
+          <h3>Set app metadata</h3>
+          <p>name, icons, version, scope</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">5</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 3c3.5 1.5 6 5 6 9l-2.5 2.5h-7L6 12c0-4 2.5-7.5 6-9z"/><circle cx="12" cy="10" r="1.6"/><path d="M9 17l-2 4M15 17l2 4"/></svg>
+          <h3>POST publish API</h3>
+          <p>with botServiceArmId</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="lane auto">
+      <div class="lane-head">
+        <span class="lane-badge">2</span>
+        <span class="lane-title">Foundry performs the native publish</span>
+        <span class="lane-note">the REST endpoint replaces the unavailable portal button</span>
+      </div>
+      <div class="flow">
+        <div class="card">
+          <span class="number">6</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+          <h3>Validate request</h3>
+          <p>agent, metadata, version</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card star">
+          <span class="tag">activity protocol</span>
+          <span class="number">7</span>
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8l4 4-4 4"/></svg>
+          <h3>Enable activity endpoint</h3>
+          <p>Foundry accepts bot activities</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">8</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 11l2 2 4-4"/></svg>
+          <h3>Set authorization</h3>
+          <p>RBAC or tenant access</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">9</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>
+          <h3>Build catalog package</h3>
+          <p>Teams app manifest ZIP</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">10</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>
+          <h3>Register catalog entry</h3>
+          <p>Teams + Microsoft 365</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="lane done">
+      <div class="lane-head">
+        <span class="lane-badge">3</span>
+        <span class="lane-title">Users discover the native agent</span>
+        <span class="lane-note">scope determines store visibility and who can call it</span>
+      </div>
+      <div class="flow">
+        <div class="card">
+          <span class="number">11</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+          <h3>Shared scope</h3>
+          <p>Your agents - Foundry RBAC</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card">
+          <span class="number">12</span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="8"/></svg>
+          <h3>Tenant scope</h3>
+          <p>admin approval, then org-wide</p>
+        </div>
+        <div class="arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <div class="card star">
+          <span class="tag">native catalog</span>
+          <span class="number">13</span>
+          <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="3"/><path d="M8 21l3-4M16 21l-3-4"/><path d="M9 11h6M9 14h4"/></svg>
+          <h3>Chat in Teams or Copilot</h3>
+          <p>no custom Teams ZIP upload</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="runtime" aria-labelledby="runtime-title">
+      <div class="runtime-head">
+        <h2 id="runtime-title">After publishing: one message through the activity protocol</h2>
+        <span class="runtime-note">this network path is required because Foundry remains private</span>
+      </div>
+      <div class="runtime-grid">
+        <article class="node">
+          <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="3"/><path d="M8 21l3-4M16 21l-3-4"/></svg>
+          <h3>Teams or Copilot</h3>
+          <p>User sends a message</p>
+        </article>
+        <div class="runtime-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <article class="node">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M7 11h10"/></svg>
+          <h3>Bot Channel Adapter</h3>
+          <p>Signs Activity JWT</p>
+        </article>
+        <div class="runtime-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <article class="node edge">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M4 20V10l8-6 8 6v10"/><path d="M8 20v-6h8v6"/></svg>
+          <h3>Public ingress + TLS</h3>
+          <p>Firewall, gateway, or proxy</p>
+        </article>
+        <div class="runtime-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+        <article class="node foundry">
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8l4 4-4 4"/></svg>
+          <h3>Foundry activity endpoint</h3>
+          <p>Validates and authorizes</p>
+        </article>
+        <article class="node foundry">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 3c3.5 1.5 6 5 6 9l-2.5 2.5h-7L6 12c0-4 2.5-7.5 6-9z"/><circle cx="12" cy="10" r="1.6"/></svg>
+          <h3>Private Foundry agent</h3>
+          <p>Runs tools and model</p>
+        </article>
+      </div>
+      <div class="return-path"><strong>Return path:</strong> Foundry response travels back through the same ingress and Bot Channel Adapter to the user.</div>
+    </section>
+
+    <div class="footer">
+      <div class="callout warning">
+        <svg class="callout-icon" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5M12 17h.01"/></svg>
+        <div><b>Private endpoint caveat:</b> the Azure Bot Service and Microsoft channel adapters cannot reach a private IP directly. Public ingress, valid TLS, route/DNAT, and restricted source access are part of the runtime design.</div>
+      </div>
+      <div class="callout success">
+        <svg class="callout-icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        <div><b>What disappears versus the shared-router route:</b> no custom translator container, per-agent routing registry, generated sideload package, or custom Bot Framework middleware. Foundry owns the activity protocol and catalog publication.</div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

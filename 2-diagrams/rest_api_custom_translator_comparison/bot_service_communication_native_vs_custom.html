@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bot Service communication - native vs custom translator</title>
+  <script>
+    (() => {
+      const theme = new URLSearchParams(window.location.search).get("clawpilotTheme") || "light";
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root { color-scheme:light; --ink:#1b1a19; --muted:#605e5c; --line:#e6e4e2; --blue-bg:#eef4fb; --blue-ln:#cfe1f5; --orange-bg:#fff4ce; --orange-ln:#f1cb82; --green-bg:#eef7ee; --green-ln:#cfe8cf; --purple-bg:#f4eefb; --purple-ln:#e0d0f0; --gray-bg:#f3f2f1; --gray-ln:#e1dfdd; --inbound:#0078d4; --return:#2f9e44; --ctrl:#8a5cf0; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05); }
+    html[data-theme="dark"] { color-scheme:dark; --ink:#dedede; --muted:#b0b0b0; --line:#474747; --blue-bg:#283b4e; --blue-ln:#4f7da1; --orange-bg:#4c412e; --orange-ln:#8b7042; --green-bg:#314536; --green-ln:#537b59; --purple-bg:#44384f; --purple-ln:#725b86; --gray-bg:#2e2e2e; --gray-ln:#474747; --inbound:#78b9ef; --return:#6cbd70; --ctrl:#c8a8e5; --shadow:0 4px 14px rgba(0,0,0,.28); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#fff; color:var(--ink); font-family:"Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif; -webkit-font-smoothing:antialiased; }
+    html[data-theme="dark"] body { background:#1f1e1d; }
+    .canvas { min-width:1500px; padding:26px 34px 32px; }
+    h1 { margin:0 0 4px; text-align:center; font-size:24px; font-weight:650; } .sub { margin:0 0 20px; text-align:center; color:var(--muted); font-size:14px; }
+    .legend { display:flex; justify-content:center; gap:20px; margin:0 0 18px; color:var(--muted); font-size:11.5px; flex-wrap:wrap; } .legend span { display:flex; align-items:center; gap:6px; } .swatch { width:13px; height:13px; border:1px solid; border-radius:3px; } .blue{background:var(--blue-bg);border-color:var(--blue-ln)} .orange{background:var(--orange-bg);border-color:var(--orange-ln)} .green{background:var(--green-bg);border-color:var(--green-ln)} .purple{background:var(--purple-bg);border-color:var(--purple-ln)}
+    .lane { position:relative; border:1px solid var(--line); border-radius:14px; margin-bottom:17px; padding:44px 16px 16px; background:var(--gray-bg); }
+    .lane-title { position:absolute; top:0; left:0; right:0; padding:10px 16px; border-radius:14px 14px 0 0; color:#fff; font-size:13px; font-weight:700; letter-spacing:.6px; display:flex; align-items:center; gap:10px; }
+    .lane-title .tagline { font-weight:400; letter-spacing:0; opacity:.92; font-size:11.5px; }
+    .lane.ctrl .lane-title { background:#6b4fa1; } html[data-theme="dark"] .lane.ctrl .lane-title { background:#5a4780; }
+    .lane.native .lane-title { background:#5c2d91; } html[data-theme="dark"] .lane.native .lane-title { background:#4c2478; }
+    .lane.custom .lane-title { background:#0078d4; } html[data-theme="dark"] .lane.custom .lane-title { background:#2b5f8a; }
+    .flow { display:flex; align-items:stretch; gap:0; }
+    .zone { position:relative; flex:0 0 auto; padding:29px 14px 14px; border:1px solid; border-radius:12px; } .zone.blue{background:var(--blue-bg);border-color:var(--blue-ln)} .zone.orange{background:var(--orange-bg);border-color:var(--orange-ln)} .zone.green{background:var(--green-bg);border-color:var(--green-ln)} .zone.purple{background:var(--purple-bg);border-color:var(--purple-ln)}
+    .zlabel { position:absolute; top:9px; left:14px; font-size:11.5px; font-weight:700; } .zlabel span { color:var(--muted); font-weight:400; }
+    .node { width:150px; min-height:132px; display:flex; flex-direction:column; align-items:center; gap:7px; padding:12px 8px 9px; text-align:center; background:#fff; border:1px solid var(--line); border-radius:11px; box-shadow:var(--shadow); } html[data-theme="dark"] .node { background:#292929; }
+    .node.wide { width:190px; }
+    .node .ic { width:42px; height:42px; } .nm { font-size:13px; font-weight:700; line-height:1.14; } .sb { color:var(--muted); font-size:10.4px; line-height:1.22; }
+    .arr { width:74px; flex:0 0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:0 4px; } .arr .label { color:var(--inbound); font-size:9.6px; font-weight:700; line-height:1.15; text-align:center; } .arr svg { width:100%; height:20px; color:var(--inbound); }
+    .arr.ctrl .label { color:var(--ctrl); } .arr.ctrl svg { color:var(--ctrl); }
+    .tag { position:absolute; transform:translateY(-10px); padding:2px 7px; border-radius:999px; background:#107c10; color:#fff; font-size:9px; font-weight:700; white-space:nowrap; }
+    .tag.warn { background:#b26a00; } .tag.info { background:#5c2d91; }
+    .props { list-style:none; margin:4px 0 0; padding:0; text-align:left; width:100%; }
+    .props li { font-size:10px; color:var(--muted); line-height:1.5; padding-left:12px; position:relative; } .props li::before { content:"\2022"; position:absolute; left:2px; color:var(--ctrl); }
+    .props li b { color:var(--ink); font-weight:700; }
+    .diff { position:absolute; top:-9px; right:12px; padding:2px 9px; border-radius:999px; font-size:9.5px; font-weight:700; color:#fff; background:#b26a00; }
+    .security { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-top:6px; } .callout { display:flex; gap:10px; padding:13px 15px; border:1px solid var(--purple-ln); border-radius:10px; background:var(--purple-bg); } .callout.green-note { border-color:var(--green-ln); background:var(--green-bg); } .callout.orange-note { border-color:var(--orange-ln); background:var(--orange-bg); } .badge { flex:0 0 auto; width:24px; height:24px; display:grid; place-items:center; border-radius:50%; background:#5c2d91; color:#fff; font-size:13px; font-weight:700; } .green-note .badge { background:#107c10; } .orange-note .badge { background:#b26a00; } .callout strong { display:block; font-size:12.5px; } .callout span { display:block; margin-top:3px; color:var(--muted); font-size:11.5px; line-height:1.35; }
+    @media (max-width:720px) { body{overflow-x:auto} .security{grid-template-columns:1fr; min-width:900px;} }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <h1>How the Bot Service communicates: native route vs custom translator route</h1>
+    <p class="sub">The <strong>Azure Bot Service</strong> is a registration resource, not a runtime hop. It tells Microsoft's Bot Channel Service <em>which endpoint to POST to</em> and <em>which App ID the traffic is signed for</em>. For private Foundry, both runtime routes need a public traffic router with TLS termination and private forwarding; the routes differ only in what sits behind that router.</p>
+    <div class="legend" aria-label="Diagram legend"><span><i class="swatch blue"></i>Microsoft SaaS</span><span><i class="swatch orange"></i>Public traffic router + TLS</span><span><i class="swatch green"></i>Private VNet hop</span><span><i class="swatch purple"></i>Private Foundry</span></div>
+
+    <!-- CONTROL PLANE -->
+    <section class="lane ctrl" aria-label="Bot Service registration">
+      <div class="lane-title">CONTROL PLANE - the Bot Service registration <span class="tagline">(identical in both routes - you create it yourself)</span></div>
+      <div class="flow">
+        <div class="zone orange"><div class="zlabel">Azure resource you deploy</div><article class="node wide"><span class="tag info">you create this</span><svg class="ic" viewBox="0 0 48 48"><rect x="6" y="12" width="36" height="26" rx="5" fill="#5c2d91"/><circle cx="18" cy="25" r="3" fill="#fff"/><circle cx="30" cy="25" r="3" fill="#fff"/><path d="M24 6v6" stroke="#5c2d91" stroke-width="2.6" stroke-linecap="round"/><circle cx="24" cy="5" r="2.4" fill="#5c2d91"/></svg><div class="nm">Azure Bot Service</div><ul class="props"><li><b>msaAppId</b> - identity that signs</li><li><b>endpoint</b> - where to POST</li><li><b>MsTeams</b> channel enabled</li></ul></article></div>
+        <div class="arr ctrl"><div class="label">registers<br>endpoint + App ID</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone blue"><div class="zlabel">Microsoft cloud</div><article class="node"><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0078D4"/><rect x="13" y="18" width="22" height="16" rx="4" fill="#fff"/><path d="M24 12v5" stroke="#fff" stroke-width="2.4"/><circle cx="24" cy="11" r="2" fill="#fff"/><circle cx="19.5" cy="26" r="2.3" fill="#0078D4"/><circle cx="28.5" cy="26" r="2.3" fill="#0078D4"/></svg><div class="nm">Bot Channel Service</div><div class="sb">Reads the registration, then POSTs each Teams message to that endpoint</div></article></div>
+        <div class="arr ctrl"><div class="label">both routes<br>point here</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone orange"><div class="zlabel">Same endpoint value</div><article class="node wide"><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#f7630c"/><path d="M14 31h20M17 26h14M20 21h8" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M24 12v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg><div class="nm">Public traffic router</div><div class="sb"><code>https://&lt;public-host&gt;/messages</code><br>Firewall, load balancer, CDN, Application Gateway, APIM, or another network appliance.</div></article></div>
+      </div>
+    </section>
+
+    <!-- NATIVE ROUTE -->
+    <section class="lane native" aria-label="Native route data path">
+      <div class="lane-title">NATIVE REST ROUTE <span class="tagline">- the public traffic router forwards straight to Foundry's own activity protocol. No translation code we own.</span></div>
+      <div class="flow">
+        <div class="zone blue"><div class="zlabel">Microsoft cloud</div><article class="node"><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#5059C9"/><circle cx="24" cy="18" r="6" fill="#fff"/><path d="M13 36c0-6 5-9.5 11-9.5S35 30 35 36" fill="#fff"/></svg><div class="nm">Teams / Copilot</div><div class="sb">User sends a message</div></article></div>
+        <div class="arr"><div class="label">activity +<br>signed JWT</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone blue"><div class="zlabel">Microsoft cloud</div><article class="node"><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0078D4"/><rect x="13" y="18" width="22" height="16" rx="4" fill="#fff"/><path d="M24 12v5" stroke="#fff" stroke-width="2.4"/><circle cx="24" cy="11" r="2" fill="#fff"/><circle cx="19.5" cy="26" r="2.3" fill="#0078D4"/><circle cx="28.5" cy="26" r="2.3" fill="#0078D4"/></svg><div class="nm">Bot Channel Service</div><div class="sb">aud = agent's own App ID</div></article></div>
+        <div class="arr"><div class="label">POST to<br>bot endpoint</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone orange"><div class="zlabel">Public traffic router</div><article class="node"><span class="tag">TLS + proxy</span><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#f7630c"/><path d="M14 31h20M17 26h14M20 21h8" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M24 12v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg><div class="nm">Public traffic router</div><div class="sb">Terminates TLS and proxies to Foundry. It can validate the Bot JWT when required.</div></article></div>
+        <div class="arr"><div class="label">private<br>DNS</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone purple"><div class="zlabel">Private endpoint</div><article class="node wide"><span class="diff">NATIVE DIFFERENCE</span><svg class="ic" viewBox="0 0 48 48"><path d="M24 5c1.6 9.4 9 16.8 18.5 18.5C33 25.2 25.6 32.6 24 42c-1.6-9.4-9-16.8-18.5-18.5C15 21.8 22.4 14.4 24 5z" fill="#8a5cf0"/></svg><div class="nm">Foundry activity protocol</div><div class="sb"><code>/agents/&lt;agent&gt;/endpoint/protocols/activityProtocol</code><br>Foundry speaks Bot Framework natively and runs the agent (10.x.x.x).</div></article></div>
+      </div>
+    </section>
+
+    <!-- CUSTOM ROUTE -->
+    <section class="lane custom" aria-label="Custom translator route data path">
+      <div class="lane-title">CUSTOM TRANSLATOR ROUTE <span class="tagline">- the public traffic router forwards to a container we own, which converts Bot activities into Foundry Responses API calls.</span></div>
+      <div class="flow">
+        <div class="zone blue"><div class="zlabel">Microsoft cloud</div><article class="node"><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#5059C9"/><circle cx="24" cy="18" r="6" fill="#fff"/><path d="M13 36c0-6 5-9.5 11-9.5S35 30 35 36" fill="#fff"/></svg><div class="nm">Teams / Copilot</div><div class="sb">User sends a message</div></article></div>
+        <div class="arr"><div class="label">activity +<br>signed JWT</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone blue"><div class="zlabel">Microsoft cloud</div><article class="node"><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#0078D4"/><rect x="13" y="18" width="22" height="16" rx="4" fill="#fff"/><path d="M24 12v5" stroke="#fff" stroke-width="2.4"/><circle cx="24" cy="11" r="2" fill="#fff"/><circle cx="19.5" cy="26" r="2.3" fill="#0078D4"/><circle cx="28.5" cy="26" r="2.3" fill="#0078D4"/></svg><div class="nm">Bot Channel Service</div><div class="sb">aud = dedicated bot App reg</div></article></div>
+        <div class="arr"><div class="label">POST to<br>bot endpoint</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone orange"><div class="zlabel">Public traffic router</div><article class="node"><span class="tag">TLS + proxy</span><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#f7630c"/><path d="M14 31h20M17 26h14M20 21h8" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M24 12v6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg><div class="nm">Public traffic router</div><div class="sb">Terminates TLS and proxies to the translator. It can validate the Bot JWT when required.</div></article></div>
+        <div class="arr"><div class="label">internal<br>FQDN</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone green"><div class="zlabel">Private VNet</div><article class="node wide"><span class="diff" style="background:#0078d4">CUSTOM DIFFERENCE</span><svg class="ic" viewBox="0 0 48 48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#107c10"/><rect x="12" y="16" width="24" height="16" rx="2.5" fill="#fff"/><path d="M12 22h24" stroke="#107c10" stroke-width="2"/><circle cx="17" cy="19" r="1.4" fill="#107c10"/><circle cx="17" cy="27.5" r="1.4" fill="#107c10"/></svg><div class="nm">Translator Container App</div><div class="sb">Converts Bot activity &harr; Foundry <b>Responses API</b>. Owns tokens, state, OAuth.</div></article></div>
+        <div class="arr"><div class="label">responses<br>API (private)</div><svg viewBox="0 0 74 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h57M57 3l12 7-12 7"/></svg></div>
+        <div class="zone purple"><div class="zlabel">Private endpoint</div><article class="node"><svg class="ic" viewBox="0 0 48 48"><path d="M24 5c1.6 9.4 9 16.8 18.5 18.5C33 25.2 25.6 32.6 24 42c-1.6-9.4-9-16.8-18.5-18.5C15 21.8 22.4 14.4 24 5z" fill="#8a5cf0"/></svg><div class="nm">Foundry agent</div><div class="sb">Runs model + tools privately</div></article></div>
+      </div>
+    </section>
+
+    <section class="security" aria-label="Key points">
+      <div class="callout orange-note"><span class="badge">?</span><div><strong>Public traffic router applies to both runtime routes</strong><span>For a private Foundry endpoint, the native and custom routes both need a public entry point that routes inward and a component that terminates TLS. This can be one component or two: firewall, load balancer, CDN, Application Gateway, APIM, or another appliance.</span></div></div>
+      <div class="callout"><span class="badge">1</span><div><strong>What the Bot Service actually does</strong><span>It's registration only: it stores the <code>msaAppId</code> and messaging <code>endpoint</code> and enables the Teams channel. The Bot Channel Service reads it to know where to POST and which App ID the JWT is signed for.</span></div></div>
+      <div class="callout green-note"><span class="badge">2</span><div><strong>The one real difference</strong><span>Native: the router forwards straight to Foundry's built-in activity protocol - no translation code. Custom: it forwards to a container we own that translates to the Responses API, giving us control over delegated tokens and consent.</span></div></div>
+    </section>
+  </main>
+</body>
+</html>

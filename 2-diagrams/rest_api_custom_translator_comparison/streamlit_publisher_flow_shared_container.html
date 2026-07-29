@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Publisher App — What Happens When You Publish an Agent (shared container)</title>
+<style>
+  :root{
+    --blue:#0078D4; --blue-bg:#EAF3FC; --blue-line:#B6D8F5;
+    --purple:#5C2D91; --purple-bg:#F1EAF8; --purple-line:#D9C6EC;
+    --green:#107C10; --green-bg:#E6F4E6; --green-line:#BFE3BF;
+    --amber:#B26A00; --amber-bg:#FFF6E5; --amber-line:#F0D9A6;
+    --ink:#1b1a19; --muted:#605e5c; --line:#e6e4e2;
+    --shadow:0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#f6f5f4; color:var(--ink);
+    font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .canvas{max-width:1280px; margin:0 auto; padding:32px 28px 44px;}
+  header{display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:6px;}
+  h1{font-size:26px; font-weight:700; margin:0; letter-spacing:-.2px;}
+  .sub{color:var(--muted); font-size:14px; margin:4px 0 0;}
+  .legend{display:flex; flex-direction:column; gap:7px; background:#fff; border:1px solid var(--line);
+    border-radius:12px; padding:12px 16px; box-shadow:var(--shadow); flex:0 0 auto;}
+  .legend .row{display:flex; align-items:center; gap:9px; font-size:13px; color:var(--muted);}
+  .dot{width:14px; height:14px; border-radius:50%;}
+
+  .lane{background:#fff; border:1px solid var(--line); border-radius:18px; padding:16px 18px 20px;
+    margin-top:22px; box-shadow:var(--shadow); position:relative; overflow:hidden;}
+  .lane::before{content:""; position:absolute; left:0; top:0; bottom:0; width:6px;}
+  .lane.blue::before{background:var(--blue);}
+  .lane.purple::before{background:var(--purple);}
+  .lane.green::before{background:var(--green);}
+  .lane-head{display:flex; align-items:center; gap:12px; margin:2px 0 14px 4px;}
+  .lane-badge{display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px;
+    border-radius:50%; color:#fff; font-weight:700; font-size:15px;}
+  .blue .lane-badge{background:var(--blue);}
+  .purple .lane-badge{background:var(--purple);}
+  .green .lane-badge{background:var(--green);}
+  .lane-title{font-size:16px; font-weight:700;}
+  .lane-note{font-size:13px; color:var(--muted); font-weight:400; margin-left:2px;}
+
+  .flow{display:flex; align-items:stretch; gap:0; flex-wrap:wrap;}
+  .card{flex:1 1 0; min-width:150px; border-radius:14px; padding:14px 12px 12px; position:relative;
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; border:1px solid;}
+  .blue  .card{background:var(--blue-bg);  border-color:var(--blue-line);}
+  .purple .card{background:var(--purple-bg); border-color:var(--purple-line);}
+  .green .card{background:var(--green-bg); border-color:var(--green-line);}
+  .num{position:absolute; top:8px; left:8px; width:24px; height:24px; border-radius:50%; color:#fff;
+    font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center;}
+  .blue .num{background:var(--blue);}
+  .purple .num{background:var(--purple);}
+  .green .num{background:var(--green);}
+  .ic{width:44px; height:44px; margin-top:8px;}
+  .blue .ic{color:var(--blue);}
+  .purple .ic{color:var(--purple);}
+  .green .ic{color:var(--green);}
+  .card h3{margin:0; font-size:14.5px; font-weight:700; line-height:1.2;}
+  .card p{margin:0; font-size:12px; color:var(--muted); line-height:1.3;}
+
+  .arrow{flex:0 0 26px; display:flex; align-items:center; justify-content:center; color:#b9b7b4;}
+  .arrow svg{width:20px; height:20px;}
+
+  /* highlight the star step */
+  .card.star{border-color:var(--green); box-shadow:0 0 0 2px var(--green) inset;}
+  .card.star h3{color:var(--green);}
+  .tag{position:absolute; top:-11px; left:50%; transform:translateX(-50%); white-space:nowrap;
+    background:var(--green); color:#fff; font-size:10.5px; font-weight:700; letter-spacing:.3px;
+    padding:3px 9px; border-radius:999px;}
+  .card.skip{opacity:.55; border-style:dashed;}
+  .card.skip h3{text-decoration:line-through; color:var(--muted);}
+  .skiptag{position:absolute; top:-11px; left:50%; transform:translateX(-50%); white-space:nowrap;
+    background:var(--muted); color:#fff; font-size:10.5px; font-weight:700; letter-spacing:.3px;
+    padding:3px 9px; border-radius:999px;}
+
+  .footer{display:flex; gap:16px; margin-top:22px; flex-wrap:wrap;}
+  .pill{flex:1 1 300px; border-radius:14px; padding:14px 18px; display:flex; gap:12px; align-items:center;
+    font-size:13.5px; border:1px solid;}
+  .pill .k{font-weight:700;}
+  .pill.old{background:#fdecec; border-color:#f2c2c2; color:#7a2020;}
+  .pill.new{background:var(--green-bg); border-color:var(--green-line); color:#0b4f0b;}
+  .pill svg{width:26px; height:26px; flex:0 0 auto;}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <header>
+    <div>
+      <h1>Publisher App — what happens when you publish an agent</h1>
+      <p class="sub">Private-network Foundry agent &rarr; Teams &nbsp;·&nbsp; one <b>shared</b> container, no compute per agent</p>
+    </div>
+    <div class="legend">
+      <div class="row"><span class="dot" style="background:var(--blue)"></span> You click this</div>
+      <div class="row"><span class="dot" style="background:var(--purple)"></span> Happens automatically</div>
+      <div class="row"><span class="dot" style="background:var(--green)"></span> You're done</div>
+    </div>
+  </header>
+
+  <!-- LANE 1 -->
+  <section class="lane blue">
+    <div class="lane-head">
+      <span class="lane-badge">1</span>
+      <span class="lane-title">You click through</span>
+      <span class="lane-note">the wizard, one screen at a time</span>
+    </div>
+    <div class="flow">
+
+      <div class="card">
+        <span class="num">1</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-3.3 3.6-5.5 8-5.5s8 2.2 8 5.5"/></svg>
+        <h3>Sign in</h3>
+        <p>Microsoft account</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">2</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <h3>Pick project</h3>
+        <p>subscription &rarr; Foundry</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">3</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M12 4v4M9 13h.01M15 13h.01"/><path d="M8 19v2M16 19v2"/></svg>
+        <h3>Select agent</h3>
+        <p>the one to publish</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">4</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5 13 21l-4-4 7.5-7.5a2.8 2.8 0 0 1 4 4z"/><path d="M14 8 4 4l4 10"/></svg>
+        <h3>Name &amp; brand</h3>
+        <p>Teams bot look</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">5</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3.5 1.5 6 5 6 9l-2.5 2.5h-7L6 12c0-4 2.5-7.5 6-9z"/><circle cx="12" cy="10" r="1.6"/><path d="M9 17l-2 4M15 17l2 4"/></svg>
+        <h3>Click Publish</h3>
+        <p>then just watch</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- LANE 2 -->
+  <section class="lane purple">
+    <div class="lane-head">
+      <span class="lane-badge">2</span>
+      <span class="lane-title">Behind the scenes</span>
+      <span class="lane-note">automatic &nbsp;·&nbsp; no image build, no new container</span>
+    </div>
+    <div class="flow">
+
+      <div class="card">
+        <span class="num">6</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><circle cx="12" cy="10" r="2"/><path d="M8.5 16c.6-1.7 2-2.5 3.5-2.5s2.9.8 3.5 2.5"/></svg>
+        <h3>Bot identity</h3>
+        <p>Entra app + secret</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">7</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8M16 16l2-2M14 14l2-2"/></svg>
+        <h3>Store secret</h3>
+        <p>Key Vault</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">8</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="3"/><path d="M8 21l3-4M16 21l-3-4M9 11h.01M15 11h.01"/></svg>
+        <h3>Bot + Teams</h3>
+        <p>channel wired up</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card star">
+        <span class="tag">the whole change</span>
+        <span class="num">9</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+        <h3>Write registry row</h3>
+        <p>botId &rarr; agent &rarr; authMode</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">10</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.3 11l7.4-4M8.3 13l7.4 4"/></svg>
+        <h3>Add APIM route</h3>
+        <p>gateway trusts bot</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+
+      <div class="card">
+        <span class="num">11</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/></svg>
+        <h3>Package .zip</h3>
+        <p>ready Teams app</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- LANE 3 -->
+  <section class="lane green">
+    <div class="lane-head">
+      <span class="lane-badge">3</span>
+      <span class="lane-title">You're done</span>
+      <span class="lane-note">install &amp; chat &mdash; path stays private end to end</span>
+    </div>
+    <div class="flow">
+
+      <div class="card" style="max-width:220px">
+        <span class="num">12</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11M8 10l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <h3>Download &amp; upload</h3>
+        <p>drop the .zip into Teams</p>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+      <div class="card" style="max-width:220px">
+        <span class="num" style="background:var(--green)">&#10003;</span>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="3"/><path d="M8 21l3-4M16 21l-3-4"/><path d="M8.5 10.5l2.5 2.5 4.5-4.5"/></svg>
+        <h3>Chat with your agent</h3>
+        <p>runs as the signed-in user</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- BEFORE / NOW -->
+  <div class="footer">
+    <div class="pill old">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M9 4h6l1 3H8z"/><path d="M15 9l-6 8"/></svg>
+      <div><span class="k">Before:</span> build a translator image + deploy a private container <b>per agent</b>.</div>
+    </div>
+    <div class="pill new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      <div><span class="k">Now:</span> one shared container is already running &mdash; publishing just adds a <b>row</b> + a route.</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
