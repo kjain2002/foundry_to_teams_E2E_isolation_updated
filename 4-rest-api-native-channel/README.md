@@ -1,56 +1,94 @@
 # 4 — REST API publish via Foundry's native channel
 
-Publish a private-network Foundry agent to Teams using Foundry's **native
-activity-protocol channel** — no custom translator container. APIM routes the
-Bot/Teams traffic straight to Foundry's `activityProtocol` endpoint. This is the
-**quickest path** when your agent does **not** need an MCP tool that acts as the
-signed-in user.
+> Step-by-step guide to publishing an agent to Teams using Foundry's **native
+> channel** (no custom container). Format: one-line summary per step → expand for
+> details. Broad → narrow.
 
-> Need per-user delegated tool auth (OBO)? Use the
-> [custom translator](../3-custom-translator/) instead. See the comparison table
-> in the [root README](../README.md).
+## Goal
+Get a private-network Foundry agent into Teams with **plain REST calls + APIM
+routing**, using Foundry's built-in `activityProtocol` endpoint. Fastest path
+**when your agent doesn't need an MCP tool that acts as the signed-in user**.
+(Need per-user tool auth? Use the [custom translator](../3-custom-translator/).)
 
-## What each script does
+## How it flows
+Teams → Azure Bot → APIM → Foundry's activity-protocol endpoint. Foundry does the
+Bot⇄agent translation itself.
+<details><summary>details</summary>
 
-| Script | Purpose |
-|---|---|
-| [`copy-agents.ps1`](copy-agents.ps1) | Clone existing agents into `-restapi` copies used for the native-channel test. |
-| [`enable-activity.ps1`](enable-activity.ps1) | Enable the **activity protocol** + `BotServiceRbac` / `Entra` auth schemes on each agent endpoint. |
-| [`bot-service.bicep`](bot-service.bicep) | Bicep for an **Azure Bot** + **Teams channel** pointing at the APIM route. |
-| [`deploy-bots.ps1`](deploy-bots.ps1) | Deploy the Azure Bots (via `bot-service.bicep`) for each agent. |
-| [`wire-apim.ps1`](wire-apim.ps1) | Add the APIM **operation + policy** that rewrites `/agents/{id}/messages` to the Foundry activity-protocol endpoint, and merges bot app IDs into the API's `validate-jwt` audiences. |
-| [`publish.ps1`](publish.ps1) | Call Foundry's **Microsoft 365 publish** API to surface each agent in Teams. |
+- No compute you own — Foundry hosts everything; APIM just routes.
+- Each agent gets an Azure Bot + Teams channel; APIM rewrites `/agents/{id}/messages` to the activity-protocol endpoint.
+- Compare with the container approach in the [root README](../README.md).
+</details>
 
-## Configure once, then run
+---
 
-All five scripts read a single shared config, so you fill in your environment and
-agents **one time**:
+## Step Log
+
+**Step 0 — Create one Entra app per bot (gives you each `BotAppId`).**
+<details><summary>details</summary>
+
+```powershell
+az ad app create --display-name "bot-<your-agent>-restapi" --sign-in-audience AzureADMyOrg --query appId -o tsv
+```
+- Do this once per agent; paste the `appId` into `$Agents[].BotAppId` in the next step.
+</details>
+
+**Step 1 — Configure once: copy the example config and fill it in.**
+<details><summary>details</summary>
 
 ```powershell
 Copy-Item config.example.ps1 config.ps1   # config.ps1 is git-ignored
-# edit config.ps1: your Foundry account/project, subscription, RG, tenant, APIM,
-# and the $Agents list (one entry per agent you want in Teams)
 ```
+- Set your Foundry account/project, subscription, RG, tenant, APIM.
+- Fill the `$Agents` list — one row per agent (`Agent`, `RestName`, `BotName`, `BotAppId`, `Display`, `Short`, `Full`).
+- **Every script below loops over `$Agents`, so this is the only file you edit.**
+</details>
 
-Then run in order:
+**Step 2 — Clone each agent into a `-restapi` copy.** → [`copy-agents.ps1`](copy-agents.ps1)
+<details><summary>details</summary>
 
-```powershell
-./copy-agents.ps1      # 1. clone each agent -> "<agent>-restapi" copy
-./enable-activity.ps1  # 2. enable activity protocol + auth schemes
-./deploy-bots.ps1      # 3. create Azure Bot + Teams channel per agent
-./wire-apim.ps1        # 4. add APIM route + merge bot app IDs into audiences
-./publish.ps1          # 5. publish to Microsoft 365 / Teams
-```
+- `./copy-agents.ps1`
+- Reads each `$Agents[].Agent` and creates the `RestName` copy used for the native-channel test.
+- Skip if you want to publish your existing agent directly (set `RestName = Agent`).
+</details>
 
-Every script loops over the `$Agents` you defined in `config.ps1` — no need to
-edit the scripts themselves. Add more agents by adding rows to `$Agents`.
+**Step 3 — Enable the activity protocol + auth schemes.** → [`enable-activity.ps1`](enable-activity.ps1)
+<details><summary>details</summary>
 
-## Prerequisites
+- `./enable-activity.ps1`
+- PATCHes each agent endpoint to enable `activity` protocol and the `Entra` + `BotServiceRbac` auth schemes.
+</details>
 
-- Azure CLI signed in (`az login`), with rights on the resource group + APIM.
-- An existing **private Foundry** account/project (see
-  [`../1-private-foundry-infra/`](../1-private-foundry-infra/)) fronted by **APIM**.
-- One **Entra app per bot** (its `appId` goes in `$Agents[].BotAppId`). Create with:
-  `az ad app create --display-name "<name>" --sign-in-audience AzureADMyOrg`.
-- Fill in `config.ps1` (copied from `config.example.ps1`) with your own values —
-  nothing else needs editing.
+**Step 4 — Create the Azure Bot + Teams channel per agent.** → [`deploy-bots.ps1`](deploy-bots.ps1)
+<details><summary>details</summary>
+
+- `./deploy-bots.ps1`
+- Deploys [`bot-service.bicep`](bot-service.bicep) for each agent, pointing the messaging endpoint at your APIM route.
+</details>
+
+**Step 5 — Wire the APIM route + audiences.** → [`wire-apim.ps1`](wire-apim.ps1)
+<details><summary>details</summary>
+
+- `./wire-apim.ps1`
+- Adds an APIM operation that rewrites `/agents/{id}/messages` to the Foundry activity-protocol endpoint.
+- Merges every `BotAppId` into the API-level `validate-jwt` audience list.
+</details>
+
+**Step 6 — Publish to Microsoft 365 / Teams.** → [`publish.ps1`](publish.ps1)
+<details><summary>details</summary>
+
+- `./publish.ps1`
+- Calls Foundry's `microsoft365/publish` API for each agent, using your developer metadata from `config.ps1`.
+</details>
+
+**Step 7 — Install in Teams and test.**
+<details><summary>details</summary>
+
+- Open the agent in Teams (via the published app), send a message, confirm it replies.
+- Bot messages now travel Teams → Bot → APIM → private Foundry.
+</details>
+
+---
+
+*Fill in `config.ps1` (from `config.example.ps1`) — nothing else needs editing.
+`config.ps1`, `_tmp/`, and the runtime policy snapshot are git-ignored.*
