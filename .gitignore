@@ -6,6 +6,11 @@
 *.pfx
 *.key
 
+# ── REST-API native-channel local config & runtime scratch ──────────
+4-rest-api-native-channel/config.ps1
+4-rest-api-native-channel/_tmp/
+4-rest-api-native-channel/apim-api-policy.original.xml
+
 # ── Python ──────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

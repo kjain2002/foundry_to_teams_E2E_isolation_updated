@@ -1,8 +1,11 @@
 $ErrorActionPreference = "Stop"
-# --- Fill in your Foundry account + project ---
-$acct = "<your-foundry-account>"; $proj = "<your-project>"
-$ep = "https://$acct.services.ai.azure.com/api/projects/$proj"
-$res = "https://ai.azure.com"
+# Load shared config (copy config.example.ps1 -> config.ps1 and fill it in).
+$configPath = Join-Path $PSScriptRoot "config.ps1"
+if (-not (Test-Path $configPath)) { throw "config.ps1 not found. Run:  Copy-Item config.example.ps1 config.ps1  then edit it." }
+. $configPath
+
+$ep = $ProjectEndpoint
+$res = $FoundryResource
 $tmp = Join-Path $PSScriptRoot "_tmp"
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
@@ -26,5 +29,4 @@ function Enable-Activity($name) {
     Write-Output ""
 }
 
-Enable-Activity "search-agent-restapi"
-Enable-Activity "data-agent-restapi"
+foreach ($a in $Agents) { Enable-Activity $a.RestName }

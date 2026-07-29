@@ -1,11 +1,15 @@
 $ErrorActionPreference = "Stop"
-# --- Fill in your subscription / resource group / APIM / project ---
-$sub = "<your-subscription-id>"
-$rg = "<your-resource-group>"
-$apim = "<your-apim-name>"
-$api = "foundry-bot"
+# Load shared config (copy config.example.ps1 -> config.ps1 and fill it in).
+$configPath = Join-Path $PSScriptRoot "config.ps1"
+if (-not (Test-Path $configPath)) { throw "config.ps1 not found. Run:  Copy-Item config.example.ps1 config.ps1  then edit it." }
+. $configPath
+
+$sub = $SubscriptionId
+$rg = $ResourceGroup
+$apim = $ApimName
+$api = $ApimApiName
 $apiVer = "2023-05-01-preview"
-$proj = "<your-project>"
+$proj = $FoundryProject
 $armTok = az account get-access-token --resource https://management.azure.com --query accessToken -o tsv
 $H = @{ Authorization = "Bearer $armTok"; "Content-Type" = "application/json" }
 $mgmt = "https://management.azure.com/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.ApiManagement/service/$apim"
@@ -17,7 +21,7 @@ $cur = (Invoke-RestMethod -Uri $polUri -Headers $H).properties.value
 Set-Content -Path (Join-Path $snapshotDir "apim-api-policy.original.xml") -Value $cur -Encoding utf8
 Write-Output "Snapshot saved: apim-api-policy.original.xml"
 
-$newAuds = @("<bot-app-id-1>", "<bot-app-id-2>")
+$newAuds = @($Agents | ForEach-Object { $_.BotAppId })
 $insert = ($newAuds | ForEach-Object { "                                        <value>$_</value>" }) -join "`n"
 if ($cur -match [regex]::Escape($newAuds[0])) {
     Write-Output "Audiences already present; skipping policy edit."
@@ -26,7 +30,7 @@ else {
     $updated = $cur -replace "(?s)(\s*)</claim>", "`n$insert`$1</claim>"
     $body = @{ properties = @{ value = $updated; format = "rawxml" } } | ConvertTo-Json -Depth 10
     Invoke-RestMethod -Uri $polUri -Headers $H -Method Put -Body $body | Out-Null
-    Write-Output "API-level policy updated with 2 new audiences."
+    Write-Output "API-level policy updated with $($newAuds.Count) new audiences."
 }
 
 # ---- 2. Add native pass-through operation + policy per copy ----
@@ -68,6 +72,5 @@ function Add-NativeOp($agentName) {
     Write-Output "Operation + policy set for $agentName (native activity route)."
 }
 
-Add-NativeOp "search-agent-restapi"
-Add-NativeOp "data-agent-restapi"
+foreach ($a in $Agents) { Add-NativeOp $a.RestName }
 Write-Output "Done."

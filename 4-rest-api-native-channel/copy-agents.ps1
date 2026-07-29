@@ -1,8 +1,11 @@
 $ErrorActionPreference = "Stop"
-# --- Fill in your Foundry account + project ---
-$acct = "<your-foundry-account>"; $proj = "<your-project>"
-$ep = "https://$acct.services.ai.azure.com/api/projects/$proj"
-$res = "https://ai.azure.com"
+# Load shared config (copy config.example.ps1 -> config.ps1 and fill it in).
+$configPath = Join-Path $PSScriptRoot "config.ps1"
+if (-not (Test-Path $configPath)) { throw "config.ps1 not found. Run:  Copy-Item config.example.ps1 config.ps1  then edit it." }
+. $configPath
+
+$ep = $ProjectEndpoint
+$res = $FoundryResource
 $tmp = Join-Path $PSScriptRoot "_tmp"
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
@@ -23,6 +26,7 @@ function Copy-Agent($srcName, $dstName) {
     Write-Output ""
 }
 
-# Examples: clone your existing agents into "-restapi" copies used for the native-channel test.
-Copy-Agent "search-agent" "search-agent-restapi"
-Copy-Agent "data-agent" "data-agent-restapi"
+# Clone each configured agent into its "-restapi" copy for the native-channel test.
+foreach ($a in $Agents) {
+    Copy-Agent $a.Agent $a.RestName
+}

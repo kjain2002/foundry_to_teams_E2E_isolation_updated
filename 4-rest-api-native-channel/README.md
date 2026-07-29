@@ -21,25 +21,36 @@ signed-in user.
 | [`wire-apim.ps1`](wire-apim.ps1) | Add the APIM **operation + policy** that rewrites `/agents/{id}/messages` to the Foundry activity-protocol endpoint, and merges bot app IDs into the API's `validate-jwt` audiences. |
 | [`publish.ps1`](publish.ps1) | Call Foundry's **Microsoft 365 publish** API to surface each agent in Teams. |
 
-## Typical order
+## Configure once, then run
+
+All five scripts read a single shared config, so you fill in your environment and
+agents **one time**:
 
 ```powershell
-# fill in the <placeholders> at the top of each script first
-./copy-agents.ps1      # 1. clone agents -> -restapi copies
+Copy-Item config.example.ps1 config.ps1   # config.ps1 is git-ignored
+# edit config.ps1: your Foundry account/project, subscription, RG, tenant, APIM,
+# and the $Agents list (one entry per agent you want in Teams)
+```
+
+Then run in order:
+
+```powershell
+./copy-agents.ps1      # 1. clone each agent -> "<agent>-restapi" copy
 ./enable-activity.ps1  # 2. enable activity protocol + auth schemes
-./deploy-bots.ps1      # 3. create Azure Bot + Teams channel
-./wire-apim.ps1        # 4. add APIM route + audiences
+./deploy-bots.ps1      # 3. create Azure Bot + Teams channel per agent
+./wire-apim.ps1        # 4. add APIM route + merge bot app IDs into audiences
 ./publish.ps1          # 5. publish to Microsoft 365 / Teams
 ```
+
+Every script loops over the `$Agents` you defined in `config.ps1` — no need to
+edit the scripts themselves. Add more agents by adding rows to `$Agents`.
 
 ## Prerequisites
 
 - Azure CLI signed in (`az login`), with rights on the resource group + APIM.
 - An existing **private Foundry** account/project (see
   [`../1-private-foundry-infra/`](../1-private-foundry-infra/)) fronted by **APIM**.
-- Replace every placeholder — `<your-subscription-id>`, `<your-resource-group>`,
-  `<your-foundry-account>`, `<your-project>`, `<your-apim-name>`,
-  `<your-tenant-id>`, `<bot-app-id-1>` / `<bot-app-id-2>` — with your own values.
-
-The example agent names (`search-agent`, `data-agent`) are illustrative; swap in
-your own agent names.
+- One **Entra app per bot** (its `appId` goes in `$Agents[].BotAppId`). Create with:
+  `az ad app create --display-name "<name>" --sign-in-audience AzureADMyOrg`.
+- Fill in `config.ps1` (copied from `config.example.ps1`) with your own values —
+  nothing else needs editing.
