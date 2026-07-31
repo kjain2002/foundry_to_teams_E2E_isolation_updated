@@ -62,13 +62,13 @@
     <!-- URL breakdown -->
     <div class="urlbar" aria-label="URL segments">
       <div class="seg scheme"><span class="txt">https://</span><span class="mk" style="visibility:hidden">.</span></div>
-      <div class="seg host"><span class="txt">apim-albemarle-foundry-64dp.azure-api.net</span><span class="mk">1</span></div>
+      <div class="seg host"><span class="txt">apim-&lt;your-apim&gt;.azure-api.net</span><span class="mk">1</span></div>
       <div class="sep">/</div>
       <div class="seg api"><span class="txt">bot</span><span class="mk">2</span></div>
       <div class="sep">/</div>
       <div class="seg api"><span class="txt">agents</span><span class="mk">2</span></div>
       <div class="sep">/</div>
-      <div class="seg slug"><span class="txt">starburst-agent</span><span class="mk">3</span></div>
+      <div class="seg slug"><span class="txt">&lt;your-agent-slug&gt;</span><span class="mk">3</span></div>
       <div class="sep">/</div>
       <div class="seg op"><span class="txt">messages</span><span class="mk">4</span></div>
     </div>
@@ -77,7 +77,7 @@
     <div class="cards">
       <div class="card host"><div class="h"><span class="n">1</span><span class="t">APIM gateway host</span></div><p>The <b>only public front door</b>. Foundry itself has no public IP, so the Bot Channel Service can only reach the agent through this APIM hostname (TLS + <code>validate-jwt</code>).</p></div>
       <div class="card api"><div class="h"><span class="n">2</span><span class="t">/bot/agents &mdash; the API</span></div><p>Routes to the <b>&ldquo;Foundry Bot Bridge&rdquo;</b> API (<code>apiId=foundry-bot</code>, path <code>bot</code>). All agent messaging operations live under it.</p></div>
-      <div class="card slug"><div class="h"><span class="n">3</span><span class="t">Agent slug &mdash; the switch</span></div><p>Selects the operation <code>post-agent-starburst-agent</code>. <b>This segment decides native vs. custom</b>: its policy is what forwards to a translator container (or, for a <code>-restapi</code> agent, straight to Foundry).</p></div>
+      <div class="card slug"><div class="h"><span class="n">3</span><span class="t">Agent slug &mdash; the switch</span></div><p>Selects the per-agent APIM operation. <b>This segment decides native vs. custom</b>: its policy is what forwards to the shared translator container (or, for a <code>-restapi</code> agent, straight to Foundry).</p></div>
       <div class="card op"><div class="h"><span class="n">4</span><span class="t">/messages &mdash; the POST</span></div><p>The activity-delivery operation. The Bot Channel Service <code>POST</code>s each Teams message here with a Microsoft-signed Bot JWT.</p></div>
     </div>
 
@@ -92,8 +92,8 @@
         <div class="cnode api"><span class="from">2 /bot/agents</span><div class="cn">Bot Bridge operation</div><div class="cs">Matches the per-agent route</div></div>
         <div class="carr"><svg viewBox="0 0 52 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h38M38 3l9 5-9 5"/></svg></div>
         <div class="split">
-          <div class="branch custom"><span class="pill">3 = starburst-agent</span><div><b>CUSTOM</b> &rarr; translator container <span class="pill">ca-bot-starburst-agent</span> &rarr; Foundry Responses API</div></div>
-          <div class="branch native"><span class="pill">3 = starburst-agent-restapi</span><div><b>NATIVE</b> &rarr; no override &rarr; Foundry <span class="pill">activityProtocol</span> endpoint</div></div>
+          <div class="branch custom"><span class="pill">3 = &lt;your-agent-slug&gt;</span><div><b>CUSTOM</b> &rarr; shared translator container &rarr; Foundry Responses API</div></div>
+          <div class="branch native"><span class="pill">3 = &lt;your-agent-slug&gt;-restapi</span><div><b>NATIVE</b> &rarr; no override &rarr; Foundry <span class="pill">activityProtocol</span> endpoint</div></div>
         </div>
       </div>
     </div>

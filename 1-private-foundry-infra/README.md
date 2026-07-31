@@ -106,5 +106,53 @@ Have a private Foundry? Publish an agent to Teams →
 [custom translator](../3-custom-translator/) or
 [REST API native channel](../4-rest-api-native-channel/).
 
+## File map
+<details><summary>Full folder & file hierarchy (click to expand)</summary>
+
+<details><summary><code>&lt;root&gt;</code></summary>
+
+- `README.md` — this file.
+- `INFRA_PRIVATE_FOUNDRY.md` — deep-dive on the Bicep private-network stack.
+</details>
+
+<details><summary><code>bicep/</code> — full private stack from scratch</summary>
+
+- `main.bicep` / `main.bicepparam` — top-level deployment (VNet, PEs, data resources, Foundry account + project, role assignments).
+- `azuredeploy.json` / `azuredeploy.parameters.json` — compiled ARM output of the Bicep stack.
+- `add-project.bicep` / `add-project.bicepparam` — add another project to an existing account.
+- `createCapHost.sh` / `deleteCapHost.sh` — attach / tear down the agent capability host (bash/WSL).
+- `get-existing-resources.ps1` — inspect resources already in the RG before deploying.
+- `metadata.json` — template metadata.
+- <details><summary><code>modules-network-secured/</code> — reusable Bicep modules</summary>
+
+  - `vnet.bicep` / `existing-vnet.bicep` / `network-agent-vnet.bicep` / `subnet.bicep` — VNet & subnet provisioning.
+  - `private-endpoint-and-dns.bicep` — private endpoints + private DNS zones.
+  - `standard-dependent-resources.bicep` — storage, Cosmos, AI Search dependencies.
+  - `ai-account-identity.bicep` / `ai-project-identity.bicep` / `ai-project-identity-unique.bicep` — Foundry account & project identities.
+  - `add-account-capability-host.bicep` / `add-project-capability-host.bicep` — capability host resources.
+  - `ai-search-role-assignments.bicep`, `azure-storage-account-role-assignment.bicep`, `blob-storage-container-role-assignments.bicep` / `-unique.bicep`, `cosmos-container-role-assignments.bicep`, `cosmosdb-account-role-assignment.bicep` — RBAC role assignments.
+  - `format-project-workspace-id.bicep` — derives the project workspace id.
+  - `validate-existing-resources.bicep` — pre-flight validation of existing resources.
+  </details>
+</details>
+
+<details><summary><code>terraform/</code> — add a governed project to an existing account</summary>
+
+- `main.tf` / `variables.tf` / `outputs.tf` / `providers.tf` / `versions.tf` — the Terraform config.
+- `terraform.tfvars.example` / `test.tfvars.example` — input templates.
+- `.terraform.lock.hcl` / `.gitignore` — lock file & ignores.
+- `README.md` — input reference & outputs. `MODEL-CHANGE.md` — how to switch models.
+- <details><summary><code>environments/</code></summary>
+
+  - `dev.tfvars.example` / `prod.tfvars.example` — dev / prod presets.
+  </details>
+- <details><summary><code>test/</code></summary>
+
+  - `Test-And-Destroy.ps1` — spin up, verify, and tear down for testing.
+  </details>
+</details>
+
+</details>
+
 *State files, `.terraform/`, and real `*.tfvars` are git-ignored — replace every
 `<your-...>` placeholder with your own values.*

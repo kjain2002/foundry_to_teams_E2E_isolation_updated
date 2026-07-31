@@ -20,16 +20,6 @@ Use this when a tool needs the **end user's identity**. If not, the simpler
 - Full comparison table: [root README](../README.md).
 </details>
 
-## Concept — the two auth boundaries
-Boundary A = the user's identity reaches the MCP. Boundary B = the MCP uses it to
-read data as the user.
-<details><summary>details</summary>
-
-- **Boundary A:** Foundry runs OAuth Identity Passthrough + OBO → your MCP gets a real per-user Entra JWT.
-- **Boundary B:** works when your backend **accepts the Entra JWT**; a backend that can't must use a shared service account.
-- Consent is granted **once org-wide** (pre-authorization / admin consent) — the *identity* is still per-user. Detail: [`DESIGN_v2_shared-router-and-preauth.md`](DESIGN_v2_shared-router-and-preauth.md).
-</details>
-
 ---
 
 ## Step Log
@@ -78,10 +68,87 @@ read data as the user.
 <details><summary>details</summary>
 
 - [`translator/`](translator/) — the shared Bot ⇄ Foundry container (FastAPI).
-- [`hosted_agent_app/`](hosted_agent_app/) — optional hosted-agent chat & verify sample (Responses API + Code Interpreter + MCP tool).
 - [`policies/`](policies/) — APIM policy XML. [`manifest/`](manifest/) — Teams app package. [`setup/`](setup/) — one-time platform setup.
 - [`DESIGN_v1_per-bot-container.md`](DESIGN_v1_per-bot-container.md) / [`DESIGN_v2_shared-router-and-preauth.md`](DESIGN_v2_shared-router-and-preauth.md) — the design rationale.
 - Diagrams: [`../2-diagrams/`](../2-diagrams/).
+</details>
+
+## File map
+<details><summary>Full folder & file hierarchy (click to expand)</summary>
+
+<details><summary><code>&lt;root&gt;</code> — platform infra, publish driver & design docs</summary>
+
+- `bootstrap.bicep` / `bootstrap.bicepparam` — one-time APIM bridge (External VNet mode) so Bot Service reaches Foundry's private endpoint. Skip if you already have an APIM fronting Foundry.
+- `bootstrap-translator.bicep` / `bootstrap-translator.bicepparam` — one-time shared infra every container depends on: ACR, Log Analytics, Container Apps env, storage + PE, and the `translator-mi` managed identity with RBAC.
+- `publish-agent.bicep` — per-agent wiring: creates the Azure Bot + Teams channel + APIM operation routing to one Foundry agent (Entra app created by the driver, not Bicep).
+- `publish-agent.ps1` — the shared publish driver (Entra app → KV secret → deploy `publish-agent.bicep` → render manifest → `out/<bot>.zip`).
+- `setup_shared_apim_policies.ps1` / `setup_shared_apim_routes.ps1` — apply the shared APIM base policy and per-agent routes.
+- `DESIGN_v1_per-bot-container.md` / `DESIGN_v2_shared-router-and-preauth.md` — design rationale (v1 per-bot container → v2 shared router + pre-auth).
+- `README.md` — this file.
+</details>
+
+<details><summary><code>translator/</code> — the shared Bot ⇄ Foundry container</summary>
+
+- `Dockerfile` — container image build.
+- `requirements.txt` — Python deps.
+- `README.md` — container-specific docs (env vars, local run, build & push).
+- <details><summary><code>app/</code> — FastAPI/aiohttp application</summary>
+
+  - `main.py` — entrypoint, `BotFrameworkAdapter`, `POST /api/messages` handler.
+  - `foundry.py` — Foundry Agents API wrapper (thread → message → run → poll → reply).
+  - `oauth.py` — per-user OBO token handling (Identity Passthrough).
+  - `registry.py` — agent registry lookup (which agent a bot maps to).
+  - `state.py` — conversationId → threadId store (Azure Table or in-memory).
+  - `config.py` — env-driven settings.
+  - `attachments.py` — Bot Framework attachment handling.
+  - `__init__.py` — package marker.
+  </details>
+</details>
+
+<details><summary><code>streamlit_app/</code> — click-to-publish UI (publish approach 3a)</summary>
+
+- `app.py` — Streamlit UI + step machine (sign in → sub → account → project → agent → publish → download `.zip`).
+- `auth.py` — Easy Auth header parsing + OBO / local `DefaultAzureCredential`.
+- `config.py` — pydantic env loader. `discovery.py` — ARM REST: list subs / accounts / projects / agents.
+- `publisher.py` — Graph + ARM + KV + ACR build + APIM policy rewrite + Teams `.zip`.
+- `probe_agents.py` — helper to enumerate agents. `Dockerfile` — container image.
+- `rebuild-arm.ps1` — recompile `../publish-agent.bicep` → `arm/*.json`. `restart.ps1` — dev restart helper.
+- `requirements.txt` / `.env.example` — deps & config template.
+- <details><summary><code>arm/</code></summary>
+
+  - `publish-agent.json` — ARM template compiled from `../publish-agent.bicep` at build time.
+  </details>
+</details>
+
+<details><summary><code>notebook_publisher/</code> — publish approach 3b</summary>
+
+- `publish-agent-via-shared-container.ipynb` — every publish step in code, cell by cell.
+</details>
+
+<details><summary><code>manual_cli/</code> — publish approach 3c</summary>
+
+- `README.md` — how to run `../publish-agent.ps1` directly for scripted / CI publishing.
+</details>
+
+<details><summary><code>policies/</code> — APIM policy XML</summary>
+
+- `api-base.xml` — API-level base policy (JWT validation, audiences).
+- `operation-per-agent.xml` — per-agent operation policy (native routing).
+- `operation-per-agent-translator.xml` — per-agent operation policy routing to the translator container.
+</details>
+
+<details><summary><code>setup/</code> — one-time platform setup</summary>
+
+- `SETUP_SHARED_PLATFORM.md` — deploy the shared platform once (APIM + container infra).
+- `bootstrap_entra_apps.ps1` — create the two shared Entra apps (MCP resource app + OAuth client) and grant consent.
+</details>
+
+<details><summary><code>manifest/</code> & <code>manifest-test/</code> — Teams app package</summary>
+
+- `manifest/` — `manifest.template.json` + `color.png` / `outline.png` icons (rendered per agent at publish time).
+- `manifest-test/` — a concrete built sample: `manifest.json`, icons, and a ready `*.zip`.
+</details>
+
 </details>
 
 *Replace every `<your-...>` placeholder; real `.env` and build artifacts are git-ignored.*

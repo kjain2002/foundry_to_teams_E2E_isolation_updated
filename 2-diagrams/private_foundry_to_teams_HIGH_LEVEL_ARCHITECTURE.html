@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Foundry → Teams — High-Level Architecture</title>
+  <script>
+    (() => {
+      const theme = new URLSearchParams(window.location.search).get("clawpilotTheme") || "light";
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg:#f7f4ef; --cp-bg-elevated:#fcfbf8; --cp-surface:#ffffff; --cp-surface-soft:#f5f5f5;
+      --cp-border:#dedede; --cp-border-strong:#919191; --cp-text:#242424; --cp-text-muted:#5c5c5c; --cp-text-soft:#6f6f6f;
+      --cp-accent:#5c2d91; --cp-accent-hover:#4c2478; --cp-accent-soft:#f1eaf8; --cp-accent-fg:#ffffff;
+      --cp-success:#107c10; --cp-danger:#dc2626; --cp-warning:#b26a00; --cp-link:#0078d4; --cp-link-soft:#eaf3fc; --cp-link-line:#b6d8f5;
+      --cp-accent-line:#d9c6ec; --cp-success-soft:#e6f4e6; --cp-success-line:#bfe3bf; --cp-warning-soft:#fff6e5; --cp-warning-line:#f0d9a6;
+      --cp-shadow:0 18px 48px rgba(0,0,0,.12);
+      /* diagram group palette */
+      --teams:#eef4fd;      --teams-line:#a7c7ee;    --teams-head:#2c6fd6;
+      --identity:#fff6e5;   --identity-line:#f0d9a6; --identity-head:#b26a00;
+      --edge:#f1eaf8;       --edge-line:#d9c6ec;     --edge-head:#5c2d91;
+      --custom:#eaf3fc;     --custom-line:#b6d8f5;   --custom-head:#0078d4;
+      --native:#e9f7ef;     --native-line:#b9e2ca;   --native-head:#107c10;
+      --foundry:#f3ecfb;    --foundry-line:#d9c6ec;  --foundry-head:#5c2d91;
+      --data:#eef7ee;       --data-line:#c3e3c3;     --data-head:#107c10;
+      --net:#f0f0f2;        --net-line:#d3d3da;      --net-head:#5c5c5c;
+    }
+    html[data-theme="dark"] {
+      color-scheme:dark;
+      --cp-bg:#3d3b3a; --cp-bg-elevated:#343231; --cp-surface:#292929; --cp-surface-soft:#2e2e2e;
+      --cp-border:#474747; --cp-border-strong:#5f5f5f; --cp-text:#dedede; --cp-text-muted:#919191; --cp-text-soft:#b0b0b0;
+      --cp-accent:#c8a8e5; --cp-accent-hover:#d6bbeb; --cp-accent-soft:#44384f; --cp-accent-fg:#1a1a1a;
+      --cp-success:#6cbd70; --cp-danger:#f87171; --cp-warning:#e5a34c; --cp-link:#78b9ef; --cp-link-soft:#283b4e; --cp-link-line:#4f7da1;
+      --cp-accent-line:#725b86; --cp-success-soft:#314536; --cp-success-line:#537b59; --cp-warning-soft:#4c412e; --cp-warning-line:#8b7042;
+      --cp-shadow:0 18px 48px rgba(0,0,0,.32);
+      --teams:#233247;      --teams-line:#3f5f88;    --teams-head:#78b9ef;
+      --identity:#4c412e;   --identity-line:#8b7042; --identity-head:#e5a34c;
+      --edge:#3b2f47;       --edge-line:#6a558a;     --edge-head:#c8a8e5;
+      --custom:#283b4e;     --custom-line:#4f7da1;   --custom-head:#78b9ef;
+      --native:#26402f;     --native-line:#4c7a58;   --native-head:#6cbd70;
+      --foundry:#38294a;    --foundry-line:#6a558a;  --foundry-head:#c8a8e5;
+      --data:#26402f;       --data-line:#4c7a58;     --data-head:#6cbd70;
+      --net:#38363a;        --net-line:#565358;      --net-head:#b0b0b0;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--cp-bg); color:var(--cp-text); font-family:"Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif; }
+    main { max-width:1360px; margin:0 auto; padding:34px 34px 56px; }
+    .eyebrow { margin:0 0 8px; color:var(--cp-success); font-size:13px; font-weight:700; letter-spacing:1.8px; }
+    h1 { margin:0; font-size:32px; line-height:1.12; }
+    .sub { margin:8px 0 26px; color:var(--cp-text-muted); font-size:15.5px; max-width:900px; }
+
+    /* Outer boundary that wraps the whole private stack */
+    .boundary {
+      position:relative; border:2px dashed var(--cp-accent-line); border-radius:16px;
+      padding:26px 22px 22px; background:var(--cp-bg-elevated); box-shadow:var(--cp-shadow);
+    }
+    .boundary-tag {
+      position:absolute; top:-13px; left:22px; padding:3px 12px; border-radius:999px;
+      background:var(--cp-accent); color:var(--cp-accent-fg); font-size:11.5px; font-weight:700; letter-spacing:.6px;
+    }
+
+    .flow { display:flex; align-items:stretch; gap:0; flex-wrap:nowrap; }
+    .stage { flex:1 1 0; min-width:0; display:flex; flex-direction:column; }
+    .arrow { flex:0 0 34px; display:flex; align-items:center; justify-content:center; color:var(--cp-text-muted); }
+    .arrow svg { width:30px; height:24px; }
+
+    .group {
+      border-radius:12px; border:1px solid var(--cp-border); overflow:hidden; height:100%;
+      display:flex; flex-direction:column; box-shadow:0 1px 2px rgba(0,0,0,.10);
+    }
+    .group .g-head { padding:9px 12px; font-size:12.5px; font-weight:700; color:#fff; letter-spacing:.3px; }
+    .group .g-body { padding:11px; display:flex; flex-direction:column; gap:9px; flex:1; }
+    .g-teams { background:var(--teams); border-color:var(--teams-line); }
+    .g-teams .g-head { background:var(--teams-head); }
+    .g-identity { background:var(--identity); border-color:var(--identity-line); }
+    .g-identity .g-head { background:var(--identity-head); }
+    .g-edge { background:var(--edge); border-color:var(--edge-line); }
+    .g-edge .g-head { background:var(--edge-head); }
+    .g-foundry { background:var(--foundry); border-color:var(--foundry-line); }
+    .g-foundry .g-head { background:var(--foundry-head); }
+
+    .node {
+      background:var(--cp-surface); border:1px solid var(--cp-border); border-radius:8px;
+      padding:8px 10px; box-shadow:0 1px 1px rgba(0,0,0,.06);
+    }
+    .node .n-title { font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:6px; }
+    .node .n-sub { font-size:10.8px; color:var(--cp-text-muted); margin-top:2px; line-height:1.3; }
+    .ico { font-size:14px; }
+
+    /* Branch (the two publishing approaches) */
+    .branch-wrap { display:flex; flex-direction:column; gap:10px; height:100%; }
+    .branch-label { text-align:center; font-size:11px; font-weight:700; color:var(--cp-text-muted); letter-spacing:.6px; text-transform:uppercase; }
+    .approach { border-radius:12px; border:1px solid var(--cp-border); overflow:hidden; }
+    .approach .a-head { padding:8px 11px; font-size:12px; font-weight:700; color:#fff; display:flex; align-items:center; gap:7px; }
+    .approach .a-body { padding:10px; display:flex; flex-direction:column; gap:8px; }
+    .a-custom { background:var(--custom); border-color:var(--custom-line); }
+    .a-custom .a-head { background:var(--custom-head); }
+    .a-native { background:var(--native); border-color:var(--native-line); }
+    .a-native .a-head { background:var(--native-head); }
+    .badge { display:inline-block; padding:2px 7px; border-radius:999px; font-size:9.5px; font-weight:700; letter-spacing:.4px; }
+    .badge.ok { background:var(--cp-success-soft); color:var(--cp-success); border:1px solid var(--cp-success-line); }
+    .badge.no { background:var(--cp-warning-soft); color:var(--cp-warning); border:1px solid var(--cp-warning-line); }
+
+    /* Foundation band (data + network) */
+    .foundation { display:grid; grid-template-columns:1.4fr 1fr; gap:16px; margin-top:18px; }
+    .g-data { background:var(--data); border:1px solid var(--data-line); border-radius:12px; overflow:hidden; }
+    .g-data .g-head { background:var(--data-head); }
+    .g-net { background:var(--net); border:1px solid var(--net-line); border-radius:12px; overflow:hidden; }
+    .g-net .g-head { background:var(--net-head); }
+    .node-row { display:flex; gap:9px; flex-wrap:wrap; }
+    .node-row .node { flex:1 1 130px; }
+
+    /* Publisher tooling panel */
+    .tooling { margin-top:18px; border:1px solid var(--cp-border); border-radius:12px; background:var(--cp-surface); overflow:hidden; }
+    .tooling .t-head { padding:10px 14px; font-weight:700; font-size:13px; background:var(--cp-surface-soft); border-bottom:1px solid var(--cp-border); display:flex; align-items:center; gap:8px; }
+    .tooling .t-body { padding:14px; display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; }
+    .tool-col h4 { margin:0 0 8px; font-size:12px; letter-spacing:.5px; text-transform:uppercase; color:var(--cp-text-muted); }
+    .drivers { display:flex; gap:9px; flex-wrap:wrap; }
+    .driver { flex:1 1 110px; text-align:center; }
+    .converge { text-align:center; font-size:11px; color:var(--cp-text-muted); margin-top:8px; }
+    .steps { display:flex; flex-direction:column; gap:6px; }
+    .step { font-size:11.6px; display:flex; gap:8px; align-items:flex-start; }
+    .step .num { flex:0 0 18px; height:18px; border-radius:50%; background:var(--native-head); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+
+    /* Legend */
+    .legend { margin-top:20px; display:flex; flex-wrap:wrap; gap:10px 22px; padding:14px 16px; border:1px solid var(--cp-border); border-radius:10px; background:var(--cp-surface); }
+    .legend .li { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--cp-text-muted); }
+    .swatch { width:15px; height:15px; border-radius:4px; border:1px solid rgba(0,0,0,.15); }
+    .note { margin-top:14px; font-size:12px; color:var(--cp-text-soft); }
+    .caption { text-align:center; font-size:10.5px; color:var(--cp-text-muted); margin-top:6px; font-style:italic; }
+
+    @media (max-width:1080px){
+      .flow { flex-wrap:wrap; gap:12px; }
+      .stage { flex:1 1 45%; }
+      .arrow { display:none; }
+      .foundation { grid-template-columns:1fr; }
+      .tooling .t-body { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">PRIVATE FOUNDRY → MICROSOFT TEAMS · END-TO-END, NETWORK-ISOLATED</p>
+    <h1>High-Level Architecture</h1>
+    <p class="sub">
+      Publishing <strong>network-isolated Azure AI Foundry agents</strong> to <strong>Microsoft Teams</strong> without exposing Foundry to the
+      public internet. A Teams message travels through Entra + Azure Bot Service, into a <strong>private APIM</strong> front door, then to the
+      private Foundry endpoint via one of <strong>two publishing approaches</strong> — the <em>custom translator</em> (per-user MCP auth) or the
+      <em>REST API native channel</em> (fastest path).
+    </p>
+
+    <div class="boundary">
+      <span class="boundary-tag">🔒 PRIVATE / VNet-INTEGRATED — Foundry public network access DISABLED</span>
+
+      <!-- MAIN FLOW -->
+      <div class="flow">
+
+        <!-- Stage 1: Teams -->
+        <div class="stage">
+          <div class="group g-teams">
+            <div class="g-head">👥 CLIENT</div>
+            <div class="g-body">
+              <div class="node">
+                <div class="n-title"><span class="ico">💬</span>Microsoft Teams</div>
+                <div class="n-sub">User chats with the agent from the Teams / M365 client.</div>
+              </div>
+              <div class="node">
+                <div class="n-title"><span class="ico">📦</span>Teams app package</div>
+                <div class="n-sub">Uploaded <code>.zip</code> manifest generated per agent.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow" title="Bot Framework activity">
+          <svg viewBox="0 0 30 24"><path d="M2 12h22M18 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+
+        <!-- Stage 2: Identity + Bot -->
+        <div class="stage">
+          <div class="group g-identity">
+            <div class="g-head">🪪 IDENTITY &amp; CHANNEL</div>
+            <div class="g-body">
+              <div class="node">
+                <div class="n-title"><span class="ico">🤖</span>Azure Bot Service</div>
+                <div class="n-sub">Bot Framework channel per agent; messaging endpoint → APIM.</div>
+              </div>
+              <div class="node">
+                <div class="n-title"><span class="ico">🔑</span>Microsoft Entra ID</div>
+                <div class="n-sub">Bot app registrations · JWT · OAuth / OBO consent.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow" title="HTTPS + validate-jwt">
+          <svg viewBox="0 0 30 24"><path d="M2 12h22M18 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+
+        <!-- Stage 3: APIM -->
+        <div class="stage">
+          <div class="group g-edge">
+            <div class="g-head">🚪 PRIVATE FRONT DOOR</div>
+            <div class="g-body">
+              <div class="node" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                <div class="n-title"><span class="ico">🧭</span>Azure API Management</div>
+                <div class="n-sub">Internal / VNet-injected. Single ingress that
+                  <strong>validate-jwt</strong>s Bot traffic and <strong>routes</strong> to the private
+                  Foundry endpoint. Rewrites <code>/agents/{id}/messages</code>.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow" title="Routes to one of two approaches">
+          <svg viewBox="0 0 30 24"><path d="M2 12h22M18 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+
+        <!-- Stage 4: Two approaches -->
+        <div class="stage" style="flex:1.35 1 0;">
+          <div class="branch-wrap">
+            <div class="branch-label">↕ pick one publishing approach</div>
+
+            <div class="approach a-custom">
+              <div class="a-head"><span>③</span> Custom translator &nbsp;<span class="badge ok">per-user MCP ✓</span></div>
+              <div class="a-body">
+                <div class="node">
+                  <div class="n-title"><span class="ico">📦</span>Azure Container Apps</div>
+                  <div class="n-sub">One <strong>shared</strong> FastAPI container translates Bot Framework ⇄ Foundry
+                    <strong>Responses API</strong>; runs OAuth code flow &amp; forwards <code>x-ms-user-token</code>. No new compute per agent.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="approach a-native">
+              <div class="a-head"><span>④</span> REST API — native channel &nbsp;<span class="badge no">per-user ✗</span></div>
+              <div class="a-body">
+                <div class="node">
+                  <div class="n-title"><span class="ico">⚡</span>Foundry <code>activityProtocol</code></div>
+                  <div class="n-sub">Foundry's built-in channel does Bot ⇄ agent itself; APIM just routes.
+                    No compute you own. Auth: Entra + BotServiceRbac.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow" title="Private endpoint">
+          <svg viewBox="0 0 30 24"><path d="M2 12h22M18 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+
+        <!-- Stage 5: Foundry -->
+        <div class="stage">
+          <div class="group g-foundry">
+            <div class="g-head">🧠 AZURE AI FOUNDRY (PRIVATE)</div>
+            <div class="g-body">
+              <div class="node">
+                <div class="n-title"><span class="ico">🏢</span>Account + Project</div>
+                <div class="n-sub">Public access off · capability host · App Insights tracing.</div>
+              </div>
+              <div class="node">
+                <div class="n-title"><span class="ico">🕵️</span>Agents</div>
+                <div class="n-sub">Hosted &amp; non-hosted (Responses API) · models.</div>
+              </div>
+              <div class="node">
+                <div class="n-title"><span class="ico">🛠️</span>Tools</div>
+                <div class="n-sub">MCP (per-user OBO) · Code Interpreter · AI Search grounding.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /flow -->
+
+      <!-- FOUNDATION BAND -->
+      <div class="foundation">
+        <div class="g-data">
+          <div class="g-head" style="color:#fff; padding:9px 12px; font-size:12.5px; font-weight:700;">🗄️ PRIVATE DATA PLANE — reached over private endpoints</div>
+          <div class="g-body" style="padding:12px;">
+            <div class="node-row">
+              <div class="node"><div class="n-title"><span class="ico">🔎</span>Azure AI Search</div><div class="n-sub">Vector / grounding index.</div></div>
+              <div class="node"><div class="n-title"><span class="ico">🌌</span>Azure Cosmos DB</div><div class="n-sub">Agent threads / state.</div></div>
+              <div class="node"><div class="n-title"><span class="ico">💾</span>Azure Storage</div><div class="n-sub">Blobs &amp; files.</div></div>
+              <div class="node"><div class="n-title"><span class="ico">🏛️</span>Container Registry</div><div class="n-sub">ACR for the translator image.</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="g-net">
+          <div class="g-head" style="color:#fff; padding:9px 12px; font-size:12.5px; font-weight:700;">🌐 NETWORK FOUNDATION (Bicep / Terraform)</div>
+          <div class="g-body" style="padding:12px;">
+            <div class="node-row">
+              <div class="node"><div class="n-title"><span class="ico">🕸️</span>VNet + Subnets</div><div class="n-sub">Isolated address space.</div></div>
+              <div class="node"><div class="n-title"><span class="ico">🔌</span>Private Endpoints + DNS</div><div class="n-sub">Private link to every PaaS resource.</div></div>
+              <div class="node"><div class="n-title"><span class="ico">🎫</span>Managed Identity + RBAC</div><div class="n-sub">Role assignments, no secrets.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /boundary -->
+
+    <!-- PUBLISHER TOOLING -->
+    <div class="tooling">
+      <div class="t-head"><span class="ico">🚀</span> Publisher tooling — how each approach is driven (control plane, run once per agent)</div>
+      <div class="t-body">
+        <div class="tool-col">
+          <h4>③ Custom translator — three drivers, one engine</h4>
+          <div class="drivers">
+            <div class="node driver"><div class="n-title" style="justify-content:center;"><span class="ico">🖥️</span>3a · Streamlit</div><div class="n-sub">Click-to-publish UI.</div></div>
+            <div class="node driver"><div class="n-title" style="justify-content:center;"><span class="ico">📓</span>3b · Notebook</div><div class="n-sub">Every step in code.</div></div>
+            <div class="node driver"><div class="n-title" style="justify-content:center;"><span class="ico">⌨️</span>3c · Manual CLI</div><div class="n-sub">Scripted / CI (PowerShell).</div></div>
+          </div>
+          <div class="converge">↓ all three call the same tested <code>publisher.py</code> ↓<br />
+            → Entra app · Azure Bot · Teams channel · registry row · Teams <code>.zip</code> &nbsp;(no new compute)</div>
+        </div>
+        <div class="tool-col">
+          <h4>④ REST API native channel — PowerShell step scripts</h4>
+          <div class="steps">
+            <div class="step"><span class="num">1</span><span><code>copy-agents.ps1</code> — clone each agent into a <code>-restapi</code> copy.</span></div>
+            <div class="step"><span class="num">2</span><span><code>enable-activity.ps1</code> — turn on <code>activity</code> protocol + Entra / BotServiceRbac auth.</span></div>
+            <div class="step"><span class="num">3</span><span><code>deploy-bots.ps1</code> — Azure Bot + Teams channel (<code>bot-service.bicep</code>).</span></div>
+            <div class="step"><span class="num">4</span><span><code>wire-apim.ps1</code> — APIM route rewrite + merge BotAppIds into validate-jwt.</span></div>
+            <div class="step"><span class="num">5</span><span><code>publish.ps1</code> — call Foundry <code>microsoft365/publish</code>.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEGEND -->
+    <div class="legend">
+      <div class="li"><span class="swatch" style="background:var(--teams);"></span>Teams / client</div>
+      <div class="li"><span class="swatch" style="background:var(--identity);"></span>Identity &amp; Bot channel</div>
+      <div class="li"><span class="swatch" style="background:var(--edge);"></span>APIM private front door</div>
+      <div class="li"><span class="swatch" style="background:var(--custom);"></span>③ Custom translator (Container Apps)</div>
+      <div class="li"><span class="swatch" style="background:var(--native);"></span>④ REST API native channel</div>
+      <div class="li"><span class="swatch" style="background:var(--foundry);"></span>Azure AI Foundry (private)</div>
+      <div class="li"><span class="swatch" style="background:var(--data);"></span>Private data plane</div>
+      <div class="li"><span class="swatch" style="background:var(--net);"></span>Network foundation</div>
+    </div>
+
+    <p class="note">
+      <strong>Rule of thumb:</strong> agent grounds only on data Foundry reaches under <em>its own</em> identity (AI Search, service-account MCP) →
+      <strong>④ REST API native channel</strong>. Agent has an MCP tool that must act as the <em>signed-in user</em> (per-user OBO / delegated data) →
+      <strong>③ custom translator</strong>. Both keep Foundry private and route through APIM.
+    </p>
+    <p class="caption">folder: foundry_to_teams_E2E_isolation_updated · ①&nbsp;infra · ②&nbsp;diagrams · ③&nbsp;custom-translator · ④&nbsp;rest-api-native-channel</p>
+  </main>
+</body>
+</html>

@@ -90,5 +90,22 @@ Copy-Item config.example.ps1 config.ps1   # config.ps1 is git-ignored
 
 ---
 
+## File map
+<details><summary>Full folder & file hierarchy (click to expand)</summary>
+
+<details><summary><code>&lt;root&gt;</code> — flat folder (no subfolders)</summary>
+
+- `README.md` — this file.
+- `config.example.ps1` — the single config you copy to `config.ps1` and fill in (Foundry account/project, sub, RG, tenant, APIM, and the `$Agents` list). Every script loops over `$Agents`.
+- `copy-agents.ps1` — **Step 2:** clone each agent into a `-restapi` copy.
+- `enable-activity.ps1` — **Step 3:** PATCH each agent to enable the `activity` protocol + `Entra` / `BotServiceRbac` auth schemes.
+- `deploy-bots.ps1` — **Step 4:** deploy `bot-service.bicep` per agent, pointing the messaging endpoint at your APIM route.
+- `bot-service.bicep` — the Azure Bot + Teams channel resource deployed per agent.
+- `wire-apim.ps1` — **Step 5:** add the APIM operation that rewrites `/agents/{id}/messages` → Foundry's activity-protocol endpoint, and merge each `BotAppId` into the API-level `validate-jwt` audiences.
+- `publish.ps1` — **Step 6:** call Foundry's `microsoft365/publish` API per agent.
+</details>
+
+</details>
+
 *Fill in `config.ps1` (from `config.example.ps1`) — nothing else needs editing.
 `config.ps1`, `_tmp/`, and the runtime policy snapshot are git-ignored.*
