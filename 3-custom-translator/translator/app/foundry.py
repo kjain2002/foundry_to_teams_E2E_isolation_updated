@@ -12,10 +12,13 @@ AZURE_CLIENT_ID env var pins it to the translator MI).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+import aiohttp
 from azure.ai.projects.aio import AIProjectClient
 from azure.identity.aio import DefaultAzureCredential
 
@@ -23,6 +26,34 @@ from .config import settings
 from .state import ThreadStore
 
 log = logging.getLogger(__name__)
+
+FOUNDRY_SCOPE = "https://ai.azure.com/.default"
+# Match the Logic Apps managed-connector consent URL wherever it appears in the
+# toolbox error body (robust to JSON escaping).
+_CONSENT_URL_RE = re.compile(r"https://[^\s\"\\]+consent\.azure-apihub\.net/[^\s\"\\]+")
+
+
+async def _probe_toolbox_consent(endpoint: str, credential) -> "Optional[str]":
+    """Return the toolbox reconnect URL if it reports CONSENT_REQUIRED, else None."""
+    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+    try:
+        token = await credential.get_token(FOUNDRY_SCOPE)
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {token.token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            ) as r:
+                body = await r.text()
+        m = _CONSENT_URL_RE.search(body)
+        return m.group(0) if m else None
+    except Exception:  # noqa: BLE001
+        log.warning("toolbox consent probe failed", exc_info=True)
+        return None
 
 
 @dataclass
@@ -127,11 +158,46 @@ class FoundryClient:
         if user_token:
             kwargs["extra_headers"] = {"x-ms-user-token": f"Bearer {user_token}"}
 
+        def _err_msg(r) -> str:
+            e = getattr(r, "error", None)
+            return (
+                getattr(e, "message", None)
+                or (e.get("message") if isinstance(e, dict) else None)
+                or ""
+            )
+
         try:
             resp = await openai.responses.create(**kwargs)
         except Exception:
             log.exception("responses.create failed (conv=%s)", conversation_id)
             raise
+
+        if _err_msg(resp) == "create_session":
+            # Session init failed. The common cause is the toolbox connection
+            # needing re-authorization (CONSENT_REQUIRED). Probe the toolbox: if
+            # consent is needed, surface the reconnect link to the user now;
+            # otherwise treat it as a transient cold start and retry once.
+            consent_url = None
+            if settings.toolbox_mcp_endpoint:
+                consent_url = await _probe_toolbox_consent(
+                    settings.toolbox_mcp_endpoint, self._cred
+                )
+            if consent_url:
+                log.warning(
+                    "toolbox consent required (conv=%s) — surfacing reconnect link",
+                    conversation_id,
+                )
+                return ChatReply(text=None, consent_link=consent_url)
+            log.warning(
+                "create_session (transient?) conv=%s — retrying once after 5s",
+                conversation_id,
+            )
+            await asyncio.sleep(5)
+            try:
+                resp = await openai.responses.create(**kwargs)
+            except Exception:
+                log.exception("responses.create retry failed (conv=%s)", conversation_id)
+                raise
 
         consent_link = _extract_consent_link(resp)
         text = _extract_text(resp)

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "5b6ea395-5313-450a-b255-3ede94f0ec1e",
+  "developer": {
+    "name": "Albemarle",
+    "websiteUrl": "https://www.example.com",
+    "privacyUrl": "https://www.example.com/privacy",
+    "termsOfUseUrl": "https://www.example.com/terms"
+  },
+  "name": {
+    "short": "CI Files Responses Agent",
+    "full": "CI Files Responses Agent"
+  },
+  "description": {
+    "short": "Agent-framework agent with code-interpreter file support.",
+    "full": "Agent-framework agent (cifiles/responses) served from private Foundry via the native REST API activity-protocol channel."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#0078D4",
+  "bots": [
+    {
+      "botId": "23c5289a-ab94-4a4a-ab16-7cc8e93cacc0",
+      "scopes": ["personal", "team", "groupChat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal"],
+          "commands": [
+            { "title": "help", "description": "How to use this agent" }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": [],
+  "webApplicationInfo": {
+    "id": "23c5289a-ab94-4a4a-ab16-7cc8e93cacc0",
+    "resource": "api://botid-23c5289a-ab94-4a4a-ab16-7cc8e93cacc0"
+  }
+}

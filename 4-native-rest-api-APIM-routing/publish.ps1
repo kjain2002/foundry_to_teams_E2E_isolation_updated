@@ -17,7 +17,7 @@ function Publish-Agent($agentName, $display, $botName, $short, $full) {
         botServiceArmId     = "$rgId/$botName"
         publishScope        = "Shared"
         publishAsAutopilot  = $false
-        appVersion          = "1.0.0"
+        appVersion          = "1.0.2"
         shortDescription    = $short
         fullDescription     = $full
         developerName       = $DeveloperName

@@ -21,6 +21,11 @@ class Settings:
         "CONTAINERS_API_VERSION", "2025-04-01-preview"
     )
 
+    # Toolbox MCP endpoint (e.g. Starburst). When set, the translator probes it on
+    # a create_session failure to detect CONSENT_REQUIRED and surface the reconnect
+    # link to the user on the spot. Leave empty to skip the probe.
+    toolbox_mcp_endpoint: str = os.environ.get("TOOLBOX_MCP_ENDPOINT", "")
+
     # --- State (conversationId -> threadId) ---
     # Use Azure Table Storage; falls back to in-memory dict if unset.
     thread_table_url: str = os.environ.get("THREAD_TABLE_URL", "")

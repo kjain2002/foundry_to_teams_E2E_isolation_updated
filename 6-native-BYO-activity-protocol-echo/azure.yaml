@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+requiredVersions:
+    extensions:
+        azure.ai.agents: '>=1.0.0-beta.4'
+name: agent-activity
+services:
+    agent-activity:
+        project: src/agent-activity
+        host: azure.ai.agent
+        language: python
+        uses:
+            - ai-project
+        env:
+            FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT}
+            LOG_LEVEL: INFO
+            MCP_USER_SCOPE: ${MCP_USER_SCOPE}
+            OAUTH_CONNECTION_NAME: ${OAUTH_CONNECTION_NAME}
+            OBO_CONNECTION_NAME: ${OAUTH_CONNECTION_NAME}
+            STATE_STORAGE_ACCOUNT: ${STATE_STORAGE_ACCOUNT}
+            TARGET_AGENT_NAME: ${TARGET_AGENT_NAME}
+        agentEndpoint:
+            authorizationSchemes:
+                - type: BotServiceRbac
+            protocols:
+                - activity
+        codeConfiguration:
+            entryPoint: main.py
+            runtime: python_3_13
+        container:
+            resources:
+                cpu: "1"
+                memory: 2Gi
+        description: |
+            Activity-protocol hosted agent (bring-your-own). Thin helper that forwards each turn to an existing Foundry Responses agent while owning the Teams UX (loading indicator, file consent, preference poll, durable state).
+        displayName: Activity-Protocol Helper
+        kind: hosted
+        metadata:
+            tags:
+                - AI Agent Hosting
+                - Activity Protocol
+                - Bring Your Own
+                - Python
+        name: agent-activity
+        protocols:
+            - protocol: activity
+              version: 2.0.0
+    ai-project:
+        host: azure.ai.project
+        deployments: []
+        endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
+infra:
+    provider: microsoft.foundry

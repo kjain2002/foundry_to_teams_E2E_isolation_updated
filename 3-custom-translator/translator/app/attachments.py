@@ -146,6 +146,15 @@ class ContainerUploader:
             return await r.json()
 
 
+async def create_container(
+    credential, project_endpoint: str, api_version: str, name: str = "teams-ci"
+) -> str:
+    """Create a fresh Code Interpreter container and return its id."""
+    uploader = ContainerUploader(project_endpoint, credential, api_version)
+    async with aiohttp.ClientSession() as session:
+        return await uploader.ensure_container(session, None, name)
+
+
 async def _download(session: aiohttp.ClientSession, ref: AttachmentRef) -> bytes:
     async with session.get(ref.url) as resp:
         if resp.status >= 400:

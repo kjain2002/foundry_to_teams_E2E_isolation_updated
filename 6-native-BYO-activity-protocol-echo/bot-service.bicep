@@ -1,8 +1,8 @@
 param botName string
 param displayName string
-param msaAppId string
-param tenantId string
-param endpoint string
+param msaAppId string          // agent-activity instance_identity.client_id
+param tenantId string          // Microsoft Entra tenant ID
+param endpoint string          // agent-activity activity protocol endpoint
 param botServiceSku string = 'F0'
 
 resource botService 'Microsoft.BotService/botServices@2022-09-15' = {
@@ -18,7 +18,7 @@ resource botService 'Microsoft.BotService/botServices@2022-09-15' = {
     msaAppId: msaAppId
     msaAppTenantId: tenantId
     msaAppType: 'SingleTenant'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
   }
 }
 

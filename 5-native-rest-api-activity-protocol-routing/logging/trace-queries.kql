@@ -1,0 +1,91 @@
+// ============================================================================
+// Trace queries — paste into Log Analytics (Logs) or App Insights (Logs).
+// Goal: follow one Teams message end-to-end and find where it stalls,
+// with a focus on custom-MCP OAuth passthrough not rendering.
+//
+// LAYER A — Azure Bot Service channel hops  (table: ABSBotRequests)
+// LAYER B — Foundry server-side agent traces (App Insights: dependencies / traces / exceptions)
+// ============================================================================
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// A1. Everything for this bot in the last 15 min, in order.
+//     Read top-to-bottom: ChannelToBot (message in) -> BotToChannel (reply out).
+// ─────────────────────────────────────────────────────────────────────────
+ABSBotRequests
+| where TimeGenerated > ago(15m)
+| sort by TimeGenerated asc
+
+
+// A2. Only inbound channel -> bot (did the Teams message actually arrive?)
+ABSBotRequests
+| where TimeGenerated > ago(30m)
+| where OperationName contains "ChannelToBot"
+| project TimeGenerated, OperationName, ResultCode, ResultSignature
+| sort by TimeGenerated asc
+
+
+// A3. Only bot -> channel (did a reply / card go back out?)
+ABSBotRequests
+| where TimeGenerated > ago(30m)
+| where OperationName contains "BotToChannel"
+| project TimeGenerated, OperationName, ResultCode, ResultSignature
+| sort by TimeGenerated asc
+
+
+// A4. Failures only — non-2xx channel hops. A stalled OAuth sign-in card round-trip
+//     usually shows up here (401/403/5xx on ChannelToBot or BotToChannel).
+ABSBotRequests
+| where TimeGenerated > ago(1h)
+| where ResultCode !startswith "2"
+| project TimeGenerated, OperationName, ResultCode, ResultSignature
+| sort by TimeGenerated desc
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// B1. Agent run overview — recent server-side spans (App Insights).
+//     Look for a span per user message; expand to see child tool/model spans.
+// ─────────────────────────────────────────────────────────────────────────
+dependencies
+| where timestamp > ago(30m)
+| project timestamp, name, type, target, success, resultCode, duration, operation_Id
+| sort by timestamp asc
+
+
+// B2. Tool / MCP invocations — is the custom MCP tool being called at all?
+//     GenAI spans name tool calls (e.g. "execute_tool <name>"); MCP shows as a
+//     dependency to your MCP server target.
+dependencies
+| where timestamp > ago(30m)
+| where name has_any ("tool", "mcp", "execute_tool", "function") or target has "mcp"
+| project timestamp, name, type, target, success, resultCode, duration, operation_Id
+| sort by timestamp asc
+
+
+// B3. OAuth / authorization signals — the passthrough step for the custom MCP.
+//     Failed auth (401/403) or an unrendered consent step surfaces here.
+union dependencies, traces, exceptions
+| where timestamp > ago(30m)
+| where tostring(name) has_any ("oauth","authorization","consent","sign-in","signin","token","401","403","unauthorized")
+      or message has_any ("oauth","authorization","consent","sign-in","signin","token","unauthorized")
+| project timestamp, itemType=$table, name=column_ifexists('name',''), message=column_ifexists('message',''),
+          resultCode=column_ifexists('resultCode',''), operation_Id
+| sort by timestamp asc
+
+
+// B4. Exceptions in the agent run (why a step failed).
+exceptions
+| where timestamp > ago(1h)
+| project timestamp, type, outerMessage, operation_Id, method
+| sort by timestamp desc
+
+
+// B5. Follow a single conversation end-to-end once you have an operation_Id
+//     from B1/B2. Replace the GUID.
+union dependencies, traces, exceptions
+| where timestamp > ago(1h)
+| where operation_Id == "<paste-operation_Id>"
+| project timestamp, itemType=$table, name=column_ifexists('name',''),
+          message=column_ifexists('message',''), success=column_ifexists('success',''),
+          resultCode=column_ifexists('resultCode','')
+| sort by timestamp asc

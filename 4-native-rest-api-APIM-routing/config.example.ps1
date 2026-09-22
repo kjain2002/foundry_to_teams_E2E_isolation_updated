@@ -7,7 +7,7 @@
 #
 #   Copy-Item config.example.ps1 config.ps1
 #   # edit config.ps1
-#   ./copy-agents.ps1 ; ./enable-activity.ps1 ; ./deploy-bots.ps1 ; ./wire-apim.ps1 ; ./publish.ps1
+#   ./copy-agents.ps1 ; ./enable-activity.ps1 ; ./deploy-bots.ps1 ; ./publish.ps1
 # ============================================================================
 
 # --- Your Azure + Foundry environment ---------------------------------------
@@ -16,8 +16,8 @@ $FoundryProject = "<your-project>"           # Foundry project name
 $SubscriptionId = "<your-subscription-id>"
 $ResourceGroup  = "<your-resource-group>"
 $TenantId       = "<your-tenant-id>"
-$ApimName       = "<your-apim-name>"          # APIM instance fronting Foundry
-$ApimApiName    = "foundry-bot"               # APIM API name (leave as-is unless yours differs)
+$ApimName       = "<your-apim-name>"          # OPTIONAL/LEGACY — only for the APIM-fronted variant (wire-apim.ps1)
+$ApimApiName    = "foundry-bot"               # OPTIONAL/LEGACY — APIM API name for wire-apim.ps1
 
 # --- The agent(s) you want to publish to Teams ------------------------------
 # Add one hashtable per agent. Everything downstream loops over this list, so
@@ -26,9 +26,10 @@ $ApimApiName    = "foundry-bot"               # APIM API name (leave as-is unles
 #   Agent    = the EXISTING Foundry agent name (source for the -restapi copy)
 #   RestName = the native-channel copy the scripts create/use (Agent + "-restapi")
 #   BotName  = the Azure Bot resource name to create
-#   BotAppId = the Entra app id used as the Bot's msaAppId (also added to the
-#              APIM validate-jwt audience list). Create the app once with:
-#                az ad app create --display-name "<name>" --sign-in-audience AzureADMyOrg
+#   BotAppId = the AGENT's identity client id (instance_identity.client_id) — NOT a
+#              separately created Entra app. Get it with:
+#                az rest --method get --url "<ProjectEndpoint>/agents/<agent>?api-version=v1" `
+#                  --resource https://ai.azure.com --query instance_identity.client_id -o tsv
 #   Display / Short / Full = how the agent appears in Teams
 $Agents = @(
     @{

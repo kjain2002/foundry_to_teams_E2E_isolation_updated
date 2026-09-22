@@ -6,10 +6,17 @@
 *.pfx
 *.key
 
-# ── REST-API native-channel local config & runtime scratch ──────────
-4-rest-api-native-channel/config.ps1
-4-rest-api-native-channel/_tmp/
-4-rest-api-native-channel/apim-api-policy.original.xml
+# ── Folders 4/5/6 local config & runtime scratch ──────────
+# Personal config filled in from config.example.ps1
+4-native-rest-api-APIM-routing/config.ps1
+4-native-rest-api-APIM-routing/_tmp/
+4-native-rest-api-APIM-routing/apim-api-policy.original.xml
+5-native-rest-api-activity-protocol-routing/config.ps1
+# azd per-environment state contains personal ids
+6-native-BYO-activity-protocol-echo/.azure/*/
+6-native-BYO-activity-protocol-echo/agent-activity-teams.zip
+6-native-BYO-activity-protocol-echo/teams-app-package/manifest.json
+6-native-BYO-activity-protocol-echo/teams-app-package/*.png
 
 # ── Python ──────────────────────────────────────────────────────────
 __pycache__/

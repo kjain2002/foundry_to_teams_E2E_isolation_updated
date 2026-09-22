@@ -13,6 +13,7 @@ runs routinely exceed 30s.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import time
@@ -39,6 +40,7 @@ from botbuilder.schema.teams import (
 
 from . import oauth
 from .attachments import (
+    create_container,
     download_container_file,
     ingest_activity_attachments,
     list_container_files,
@@ -73,6 +75,17 @@ class FoundryBot(TeamsActivityHandler):
         # cache generated-file bytes between the consent card and the accept
         # invoke (keyed by container_id:file_id); re-downloaded on cache miss.
         self._pending_files: dict[str, bytes] = {}
+
+    async def _keep_typing(self, turn: TurnContext) -> None:
+        """Show a Teams typing indicator every few seconds until cancelled."""
+        try:
+            while True:
+                await turn.send_activity(Activity(type="typing"))
+                await asyncio.sleep(3)
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            log.debug("typing indicator failed", exc_info=True)
 
     async def on_message_activity(self, turn: TurnContext) -> None:
         text = (turn.activity.text or "").strip()
@@ -170,10 +183,58 @@ class FoundryBot(TeamsActivityHandler):
                         container_id,
                     )
                 }
+            except Exception as exc:  # noqa: BLE001
+                # An expired/missing container (404) can't be reused: its id keeps
+                # being injected as USE_CONTAINER_ID and every turn fails with
+                # status=failed / empty output ("Container is expired"). Recreate a
+                # fresh one, keep going with it, and tell the user their prior
+                # session (and any uploaded files) is gone.
+                msg = str(exc)
+                if "[404]" in msg or "expired" in msg.lower() or "not found" in msg.lower():
+                    log.warning(
+                        "container %s expired — recreating for conv=%s",
+                        container_id,
+                        conversation_id,
+                    )
+                    self._manifests.pop(conversation_id, None)
+                    try:
+                        container_id = await create_container(
+                            self._foundry.credential,
+                            settings.foundry_project_endpoint,
+                            settings.containers_api_version,
+                        )
+                        self._containers[conversation_id] = container_id
+                        files_before = set()
+                        await turn.send_activity(
+                            "\u267B\uFE0F Your previous working session expired, so I "
+                            "started a fresh one. Any files you uploaded earlier are "
+                            "gone \u2014 please re-upload them if you still need them."
+                        )
+                    except Exception:  # noqa: BLE001
+                        log.exception("failed to create replacement container")
+                        self._containers.pop(conversation_id, None)
+                        container_id = None
+                else:
+                    log.warning("pre-turn container listing failed", exc_info=True)
+
+        # No container for this conversation yet (fresh chat, no upload) — create
+        # one now so file-generating tools (Code Interpreter) are always
+        # available, matching the UI which ensures a container every turn.
+        if container_id is None:
+            try:
+                container_id = await create_container(
+                    self._foundry.credential,
+                    settings.foundry_project_endpoint,
+                    settings.containers_api_version,
+                )
+                self._containers[conversation_id] = container_id
+                files_before = set()
+                log.info("created container %s for conv=%s", container_id, conversation_id)
             except Exception:  # noqa: BLE001
-                log.warning("pre-turn container listing failed", exc_info=True)
+                log.exception("failed to create container for conv=%s", conversation_id)
 
         history = self._history.get(conversation_id, [])
+        typing_task = asyncio.create_task(self._keep_typing(turn))
         try:
             reply = await self._foundry.chat(
                 cfg.foundry_agent_name,
@@ -190,6 +251,8 @@ class FoundryBot(TeamsActivityHandler):
                 "Sorry, the agent backend hit an error. Please try again."
             )
             return
+        finally:
+            typing_task.cancel()
 
         # Foundry asked the user to authorize a tool (OAuth Identity Passthrough):
         # surface its consent_link as an "Open consent" card. After the user

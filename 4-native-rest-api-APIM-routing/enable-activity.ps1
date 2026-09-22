@@ -11,7 +11,9 @@ New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
 $patch = @{
     agent_endpoint = @{
-        protocol_configuration = @{ responses = @{}; activity = @{} }
+        # enable_m365_public_endpoint opens Foundry's source-IP-filtered public Activity
+        # Protocol route so Teams can reach a private (PNA-disabled) project without APIM.
+        protocol_configuration = @{ responses = @{}; activity = @{ enable_m365_public_endpoint = $true } }
         authorization_schemes  = @(@{ type = "Entra" }, @{ type = "BotServiceRbac" })
     }
 }
