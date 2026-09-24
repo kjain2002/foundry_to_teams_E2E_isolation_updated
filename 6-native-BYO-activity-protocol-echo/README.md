@@ -200,12 +200,23 @@ Remove-Item $tmp -Force
 az role assignment create --assignee $MyId --role "Bot Service Writer" --scope $Scope
 ```
 
-**4) Register the resource provider** (needed once per subscription; `azd`'s
-Bot creation and Step 5 both require it)
+**4) Register the resource provider** (one-time **per subscription**; `azd`'s
+Bot creation and Step 5 both require `Microsoft.BotService` to be Registered)
+
+> [!IMPORTANT]
+> `az provider register` performs `Microsoft.BotService/register/action` at
+> **subscription** scope — an RG-scoped Bot Service role does **not** grant it.
+> If you hit `AuthorizationFailed` on `.../register/action`, ask someone with
+> subscription **Contributor/Owner** to run the register once. It's one-time and
+> subscription-wide: once it shows `Registered`, nobody needs that permission
+> again — just verify with the read-only `az provider show` below and move on.
 
 ```powershell
 az account set --subscription $SubscriptionId
-az provider register --namespace Microsoft.BotService
+# Only registers if it isn't already — the read-only check needs no special rights
+if ((az provider show --namespace Microsoft.BotService --query registrationState -o tsv) -ne 'Registered') {
+  az provider register --namespace Microsoft.BotService   # needs subscription Contributor/Owner
+}
 az provider show --namespace Microsoft.BotService --query registrationState -o tsv   # -> Registered
 ```
 
@@ -326,7 +337,12 @@ $TenantId       = "<from Step 4>"
 $ActivityEndpoint = "https://<foundry>.services.ai.azure.com/api/projects/<project>/agents/agent-activity/endpoint/protocols/activityProtocol?api-version=2025-05-15-preview"
 
 az account set --subscription $SubscriptionId
-az provider register --namespace Microsoft.BotService | Out-Null
+# Microsoft.BotService must be Registered on the SUBSCRIPTION first. This is a
+# one-time action (needs subscription Contributor/Owner). If it's already
+# Registered you don't need that permission — the check below skips the register.
+if ((az provider show --namespace Microsoft.BotService --query registrationState -o tsv) -ne 'Registered') {
+  az provider register --namespace Microsoft.BotService | Out-Null   # requires Microsoft.BotService/register/action at subscription scope
+}
 az deployment group create `
   --resource-group $ResourceGroup `
   --template-file ./bot-service.bicep `
