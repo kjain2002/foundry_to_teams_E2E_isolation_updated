@@ -100,6 +100,13 @@ Every Teams turn hits the helper. It:
 
 <details><summary><b>Step 1 — Scaffold: copy env, initialize azd</b></summary>
 
+> [!NOTE]
+> Pure local setup — nothing is deployed to Azure yet.
+> You copy the example env file and create a named `azd` environment (a folder
+> that stores your settings), then tell it *which existing Foundry project to
+> target*. That binding is what stops the next step from spinning up a brand-new
+> Foundry account instead of reusing yours.
+
 ```powershell
 Copy-Item .env.example .env    # fill in FOUNDRY_PROJECT_ENDPOINT, TARGET_AGENT_NAME, MCP_USER_SCOPE, STATE_STORAGE_ACCOUNT
 azd env new <env-name>         # e.g. agent-activity-dev
@@ -132,7 +139,92 @@ AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-5"
 a **new** account (with a name like `cog-xxxxxxxxxxxx`) alongside yours.
 </details>
 
+<details><summary><b>Step 1.5 — Grant Bot Service permission (needed before <code>azd up</code>)</b></summary>
+
+> [!NOTE]
+> `azd up` (Step 2) doesn't only register the agent — it
+> also **creates an Azure Bot** so Teams can reach it. Creating that Bot needs
+> write access to Bot Service on the resource group. Give yourself (or ask an
+> admin to give you) the role below **before** running Step 2 so the Bot part
+> succeeds. The steps below check what you have, then grant what's missing.
+
+**1) Set your target scope**
+
+```powershell
+$SubscriptionId = "<your-subscription-id>"
+$ResourceGroup  = "<your-resource-group>"      # e.g. RG-FOUNDRY-DEV-WESTUS
+$Scope          = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
+$MyId           = az ad signed-in-user show --query id -o tsv
+```
+
+**2) Check whether you already have it**
+
+```powershell
+# List your role assignments on the RG (Owner or Contributor both grant BotService write)
+az role assignment list `
+  --assignee $MyId `
+  --scope $Scope `
+  --include-inherited `
+  --query "[].{role:roleDefinitionName, scope:scope}" -o table
+```
+
+You are good if you see **Owner**, **Contributor**, or a custom role that
+includes `Microsoft.BotService/botServices/write` (or `Microsoft.BotService/*`).
+If you only see reader-type roles, you'll hit the 403 — continue to step 3.
+
+**3) Grant the permission** (whoever runs this needs **Owner** or **User Access
+Administrator** on the RG/subscription — often a subscription admin)
+
+```powershell
+# Simplest: Contributor on the RG (includes Microsoft.BotService/botServices/write)
+az role assignment create `
+  --assignee $MyId `
+  --role "Contributor" `
+  --scope $Scope
+```
+
+Least-privilege alternative — a custom role scoped to just Bot Service:
+
+```powershell
+# Define once per subscription
+$roleJson = @{
+  Name             = "Bot Service Writer"
+  Description      = "Create/manage Azure Bot resources for hosted agents"
+  Actions          = @("Microsoft.BotService/*")
+  AssignableScopes = @("/subscriptions/$SubscriptionId")
+} | ConvertTo-Json -Depth 5
+$tmp = New-TemporaryFile ; Set-Content $tmp -Value $roleJson -NoNewline
+az role definition create --role-definition "@$tmp"
+Remove-Item $tmp -Force
+
+az role assignment create --assignee $MyId --role "Bot Service Writer" --scope $Scope
+```
+
+**4) Register the resource provider** (needed once per subscription; `azd`'s
+Bot creation and Step 5 both require it)
+
+```powershell
+az account set --subscription $SubscriptionId
+az provider register --namespace Microsoft.BotService
+az provider show --namespace Microsoft.BotService --query registrationState -o tsv   # -> Registered
+```
+
+Role assignments can take a minute or two to propagate. Re-run the Step&nbsp;2
+verification (`az role assignment list` above) until your new role shows, then
+proceed. If `azd up` already failed on this, just fix the role and run
+`azd deploy` — the agent is already deployed, only the Bot binding is retried.
+</details>
+
 <details><summary><b>Step 2 — <code>azd up</code>: build image + register the hosted agent</b></summary>
+
+> [!NOTE]
+> This one command does three things at once, which is why
+> it's easy to miss what's happening: (1) it **builds your helper code** in
+> `src/agent-activity/` into a container image (using a remote ACR build),
+> (2) it **registers that image as a hosted agent** called `agent-activity`
+> inside your Foundry project, and (3) a `postdeploy` hook then **creates the
+> Azure Bot** that Teams talks to. So `azd up` = build + register agent + create
+> bot. Step 1.5 exists because that third part needs Bot Service permission.
 
 ```powershell
 azd up --no-prompt
@@ -151,6 +243,13 @@ that `ai-project.endpoint` in `azure.yaml` points at *your* project.
 </details>
 
 <details><summary><b>Step 3 — Enable the M365 public endpoint on the helper agent</b></summary>
+
+> [!NOTE]
+> Your Foundry project sits behind a locked-down private
+> network, so even after Step 2 the agent is deployed but **unreachable from
+> Teams**. This step flips one switch (`enable_m365_public_endpoint`) that opens
+> a Microsoft-managed public doorway *just* for Bot Framework traffic, so Teams
+> messages can actually get in. Without it, the bot stays silent.
 
 ```powershell
 $ProjectEndpoint = "https://<foundry>.services.ai.azure.com/api/projects/<project>"
@@ -190,6 +289,12 @@ Should return `{ "enable_m365_public_endpoint": true }`.
 
 <details><summary><b>Step 4 — Fetch the helper's identity and tenant for the Bot</b></summary>
 
+> [!NOTE]
+> Read-only lookup, nothing is changed. The hosted agent
+> has its own **managed identity** (a `client_id`). You copy that id plus your
+> tenant id because the Bot in Step 5 must be created *as* that identity — that's
+> the trust link that lets the agent's replies be accepted by Teams.
+
 ```powershell
 $ProjectEndpoint = "https://<foundry>.services.ai.azure.com/api/projects/<project>"
 $agent = az rest --method get `
@@ -204,6 +309,13 @@ in Step 5.
 </details>
 
 <details><summary><b>Step 5 — Create the Azure Bot + Teams channel</b> → <a href="bot-service.bicep"><code>bot-service.bicep</code></a></summary>
+
+> [!NOTE]
+> The Azure Bot is the **Teams-facing front door**. This
+> deploys that Bot resource, points its messaging endpoint at the agent's
+> activity URL, and turns on the **Teams channel**. It uses the agent's identity
+> from Step 4 as `msaAppId`, so messages flow in and the agent's replies flow
+> back out through the same trusted identity.
 
 ```powershell
 $SubscriptionId = "<your-subscription-id>"
@@ -232,6 +344,14 @@ and the Teams channel, with messagingEndpoint = the helper's activity URL.
 
 <details><summary><b>Step 6 — Grant the helper managed identity access to storage (for durable state)</b></summary>
 
+> [!NOTE]
+> The helper needs to *remember* things between messages —
+> who's already been shown the preference card, conversation history, and which
+> Foundry session belongs to which Teams chat. It keeps that in Azure Blob
+> storage. This grants the agent's identity permission to read/write that
+> storage. Skip it and the helper falls back to memory, so it forgets everything
+> on every restart.
+
 ```powershell
 $scope = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<storage-account>"
 az role assignment create `
@@ -248,6 +368,13 @@ the poll.
 </details>
 
 <details><summary><b>Step 7 — Publish to Microsoft 365 / Teams via Foundry publish</b></summary>
+
+> [!NOTE]
+> This tells Foundry to package the agent as an installable
+> **Teams app**. `publishScope = Shared` means only you can install it; `Tenant`
+> means the whole org (needs admin approval). It returns a `teamsAppId`. The
+> catch: this path always ships `supportsFiles: false`, so file upload won't
+> work from it — that's the entire reason Step 8 exists.
 
 ```powershell
 $ProjectEndpoint = "https://<foundry>.services.ai.azure.com/api/projects/<project>"
@@ -282,6 +409,13 @@ in Teams, continue to Step 8.
 
 <details><summary><b>Step 8 — (Optional but needed for files) Build + sideload a custom Teams app with <code>supportsFiles: true</code></b></summary>
 
+> [!NOTE]
+> Only needed if you want **file upload/download in Teams**.
+> You build your *own* Teams app package (which flips `supportsFiles: true`)
+> pointing at the **same** Bot from Step 5, then install it manually (sideload)
+> or via a Teams admin. Same bot, same state — the only difference is a manifest
+> with file support turned on, which the Step 7 publish can't do.
+
 ```powershell
 $env:BOT_ID = "<agent-activity instance_identity.client_id from Step 4>"
 $env:APP_ID = [guid]::NewGuid().ToString()     # or a stable GUID you keep for updates
@@ -309,6 +443,12 @@ there's no manifest override in that API. See the *Limitations* section.
 </details>
 
 <details><summary><b>Step 9 — Install and test in Teams</b></summary>
+
+> [!NOTE]
+> The payoff — actually use it in Teams and confirm each
+> feature works end to end (welcome/preference card, file upload, generated-file
+> consent, and the `RESET**` reset). App Insights lets you watch the agent and
+> its tools actually run behind the scenes.
 
 - Personal chat with the app, send `hello` — expect the welcome message +
   preference card on first contact.
