@@ -24,6 +24,7 @@ private-networking model underneath.
 | [`4-native-rest-api-APIM-routing/`](4-native-rest-api-APIM-routing/) | Publish via Foundry's **native Activity Protocol** — but with **APIM** in front of it as the Bot messagingEndpoint. Use when you can't rely on Foundry's service-managed public route (or already run APIM for policy reasons). |
 | [`5-native-rest-api-activity-protocol-routing/`](5-native-rest-api-activity-protocol-routing/) | Same result as folder 4 but **without APIM** — flip `enable_m365_public_endpoint` and let Foundry expose an IP-filtered public route itself. The simplest, docs-exact path when you don't need custom UX. |
 | [`6-native-BYO-activity-protocol-echo/`](6-native-BYO-activity-protocol-echo/) | Deploy your **own** hosted agent that speaks Activity Protocol natively, sitting as a helper front-door in front of an existing Foundry Responses agent. Only route that gives you customizable Teams UX (typing indicator, file consent, adaptive cards) and durable per-user state — but requires **sideloading a custom Teams manifest** if you want file support. |
+| [`6-native-BYO-activity-protocol-ghcp-link-target/`](6-native-BYO-activity-protocol-ghcp-link-target/) | Same BYO Activity Protocol idea, but the hosted agent **is** your existing prompt agent: the **GitHub Copilot SDK** runs its model + tools in one agent/session, with your toolbox's MCP tools (sign-in card for per-user OAuth), on-demand toolbox skills, file upload/download and App Insights logging. One `deploy.ps1` deploys it. |
 
 ---
 
@@ -174,6 +175,8 @@ Common assignments used across the repo:
 - **Foundry User** on the project (to `az rest` the agents API).
 - **Azure Bot Service Contributor** on the resource group.
 - **API Management Contributor** on APIM (folder 4).
+- **Foundry User** to the *agent identity* on the project (folder 6 GHCP) so it
+  can read toolbox skills; without it `skills/list` returns an empty list.
 - **Storage Blob Data Contributor** to the *agent's managed identity* on the
   state storage account (folder 6).
 - **Monitoring Metrics Publisher** to the *project managed identity* on the
