@@ -1,0 +1,35 @@
+# Target agent definition — the helper agent will publish to Teams *as* this agent.
+#
+# How to use:
+#   1. Copy this file to `target-agent.yaml` (same folder), OR point
+#      TARGET_AGENT_FILE at a path, OR instead set TARGET_AGENT_ID to pull an
+#      existing Foundry agent at startup.
+#   2. Fill in the instructions + model (+ optional tools) below.
+#   3. Deploy — the helper adopts these without a second agent/session.
+#
+# Only `instructions` is really required to change behavior. `model` is optional
+# (falls back to AZURE_AI_MODEL_DEPLOYMENT_NAME). `tools` mirrors a Foundry
+# agent's tool list and is used for intent only (see note at the bottom).
+
+name: My Target Agent
+
+# Optional: overrides AZURE_AI_MODEL_DEPLOYMENT_NAME when set.
+model: gpt-5.2
+
+# The target agent's system prompt / persona.
+instructions: |
+  You are the Contoso assistant. Answer questions about the customer's
+  Azure consumption and help them analyze data. Be concise and cite numbers.
+
+# Optional. Same shape as a Foundry agent's `tools`.
+# - code_interpreter / file_search / file-read tools are satisfied by this
+#   host's NATIVE capabilities (reading shared files, running python to build
+#   documents, delivering downloads) — they are NOT proxied.
+# - Any other tool (custom function, MCP server / toolbox, OpenAPI, grounding)
+#   can't run in this host without the target's runtime; it is surfaced to the
+#   model by name so it won't silently pretend to call it.
+tools:
+  - type: code_interpreter
+  - type: file_search
+  # - type: mcp
+  #   server_label: my-toolbox
