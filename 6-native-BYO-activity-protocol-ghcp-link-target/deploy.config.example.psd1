@@ -14,9 +14,9 @@
     ModelDeploymentName       = '<existing-model-deployment-name>'
 
     # Optional: link a TARGET prompt agent in THIS project. When set, deploy.ps1
-    # runs the linker (fetch_target_agent.py) to extract its prompt + tool schemas
-    # into src/activity-agent/target-agent.yaml, and the helper publishes AS that
-    # agent in a single agent/session. Leave '' to keep the helper's own persona.
+    # snapshots instructions, model and toolbox references into target-agent.yaml.
+    # The helper runs its own SDK loop, not the source target's runtime/session.
+    # Leave '' for manually maintained YAML or the helper's built-in persona.
     TargetAgentName           = ''
 
     # Durable logging: name of an App Insights resource in ResourceGroupName.
@@ -24,8 +24,8 @@
     # agent's logs + traces outlive sessions. '' = no App Insights export.
     AppInsightsName           = ''
 
-    # Grant the agent identity "Foundry User" on the project after each deploy so it
-    # can read toolbox SKILLS (without it skills/list silently returns nothing).
+    # Grant the agent identity "Foundry User" on the project after each deploy for
+    # toolbox definition/skill access. Downstream permissions remain separate.
     # Needs Owner / User Access Administrator; set $false if an admin grants it.
     GrantAgentIdentityFoundryUser = $true
 

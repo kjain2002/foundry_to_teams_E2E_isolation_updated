@@ -10,7 +10,7 @@ fully repeatable: same inputs → same output, every run. No agent/LLM involved.
 Usage (PowerShell), signed into the target's tenant/subscription::
 
     python fetch_target_agent.py --agent my-target-agent `
-        --endpoint https://<foundry-resource-name>.services.ai.azure.com/api/projects/<foundry-project-name>
+        --endpoint https://<account>.services.ai.azure.com/api/projects/<project>
 
 Or rely on env vars (TARGET_AGENT_ID, FOUNDRY_PROJECT_ENDPOINT)::
 
@@ -40,6 +40,9 @@ from azure.identity import DefaultAzureCredential
 _API_VERSION = "v1"
 _SCOPE = "https://ai.azure.com/.default"
 _OUT_DIR = Path(__file__).resolve().parent / "src" / "activity-agent"
+
+sys.path.insert(0, str(_OUT_DIR))
+from target_agent import normalize_toolbox_reference
 
 
 def _token() -> str:
@@ -79,11 +82,9 @@ def _extract_definition(doc: dict[str, Any]) -> tuple[dict[str, Any], str | None
     return doc, None
 
 
-def _mcp_tool_schemas(server_url: str, token: str) -> list[dict[str, Any]]:
-    """Best-effort: list an MCP server's tools so their schemas are captured.
-
-    Non-fatal — if the handshake fails the SDK still discovers tools at runtime.
-    """
+def _mcp_inventory(server_url: str, token: str) -> dict[str, Any]:
+    """Capture accessible tools and skills; defer consent-gated discovery to runtime."""
+    inventory: dict[str, Any] = {"tools": [], "skills": [], "warnings": []}
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -97,8 +98,6 @@ def _mcp_tool_schemas(server_url: str, token: str) -> list[dict[str, Any]]:
             "clientInfo": {"name": "fetch_target_agent", "version": "1.0"},
         },
     }
-    list_req = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
-
     def _parse(body: str) -> dict[str, Any] | None:
         body = body.strip()
         if not body:
@@ -118,14 +117,62 @@ def _mcp_tool_schemas(server_url: str, token: str) -> list[dict[str, Any]]:
             r1.raise_for_status()
             session_header = r1.headers.get("mcp-session-id")
             h2 = {"mcp-session-id": session_header} if session_header else {}
-            r2 = client.post(server_url, json=list_req, headers=h2)
-            r2.raise_for_status()
-            parsed = _parse(r2.text)
-            if parsed and isinstance(parsed.get("result"), dict):
-                return parsed["result"].get("tools", []) or []
+            initialized = _parse(r1.text) or {}
+            if initialized.get("error"):
+                raise ValueError("MCP initialize failed; authentication/discovery deferred to runtime.")
+            notification = client.post(server_url, headers=h2, json={
+                "jsonrpc": "2.0", "method": "notifications/initialized", "params": {},
+            })
+            notification.raise_for_status()
+
+            def request(method: str, params: dict) -> dict:
+                response = client.post(server_url, headers=h2, json={
+                    "jsonrpc": "2.0", "id": 2, "method": method, "params": params,
+                })
+                response.raise_for_status()
+                parsed = _parse(response.text) or {}
+                if parsed.get("error"):
+                    error = parsed["error"]
+                    if "CONSENT_REQUIRED" in json.dumps(error):
+                        raise ValueError(f"{method}: consent required; discovery deferred to runtime.")
+                    raise ValueError(f"{method}: MCP error {error.get('code')}; discovery deferred to runtime.")
+                if not isinstance(parsed.get("result"), dict):
+                    raise ValueError(f"{method}: invalid MCP result.")
+                return parsed["result"]
+
+            for method, collection in (("tools/list", "tools"), ("skills/list", "skills")):
+                try:
+                    params: dict[str, Any] = {}
+                    seen = set()
+                    while True:
+                        result = request(method, params)
+                        inventory[collection].extend(item for item in result.get(collection, [])
+                                                     if isinstance(item, dict))
+                        cursor = result.get("nextCursor")
+                        if not cursor:
+                            break
+                        if cursor in seen:
+                            raise ValueError(f"{method}: repeated pagination cursor.")
+                        seen.add(cursor)
+                        params = {"cursor": cursor}
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    inventory["warnings"].append(str(exc))
+            for skill in inventory["skills"]:
+                if skill.get("uri"):
+                    try:
+                        content = request("resources/read", {"uri": skill["uri"]})
+                        skill["markdown"] = "\n".join(block.get("text", "")
+                                                       for block in content.get("contents", [])
+                                                       if isinstance(block, dict))
+                    except Exception as exc:  # pylint: disable=broad-exception-caught
+                        inventory["warnings"].append(str(exc))
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        print(f"  [warn] could not list MCP tools for {server_url}: {exc}")
-    return []
+        inventory["warnings"].append(str(exc))
+    inventory["runtime_discovery_required"] = bool(inventory["warnings"]) or any(
+        tool.get("name") in ("tool_search", "call_tool", "search", "invoke_tool")
+        for tool in inventory["tools"]
+    )
+    return inventory
 
 
 def main() -> int:
@@ -152,16 +199,24 @@ def main() -> int:
 
     model = definition.get("model")
     instructions = definition.get("instructions") or ""
-    tools = [t for t in (definition.get("tools") or []) if isinstance(t, dict)]
+    tools = [normalize_toolbox_reference(tool) for tool in (definition.get("tools") or [])
+             if isinstance(tool, dict)]
 
-    # Enrich MCP tools with their live tool schemas (best-effort, for transparency).
     mcp_schemas: dict[str, list[dict[str, Any]]] = {}
+    mcp_inventory: dict[str, dict[str, Any]] = {}
     if not args.no_mcp_schemas:
         for tool in tools:
             if str(tool.get("type", "")).lower() == "mcp" and tool.get("server_url"):
                 label = tool.get("server_label") or "mcp"
-                print(f"  listing MCP tools for '{label}' ...")
-                mcp_schemas[label] = _mcp_tool_schemas(tool["server_url"], token)
+                key = label if label not in mcp_inventory else f"{label}-{len(mcp_inventory) + 1}"
+                while key in mcp_inventory:
+                    key += "-duplicate"
+                print(f"  inspecting MCP tools and skills for '{key}' ...")
+                inventory = _mcp_inventory(tool["server_url"], token)
+                mcp_inventory[key] = inventory
+                mcp_schemas[key] = inventory["tools"]
+                for warning in inventory["warnings"]:
+                    print(f"  [warn] {key}: {warning}")
 
     target = {
         "name": doc.get("name") or args.agent,
@@ -188,14 +243,18 @@ def main() -> int:
         fh.write(header)
         yaml.safe_dump(target, fh, sort_keys=False, default_flow_style=False, allow_unicode=True)
 
-    raw = {"agent": doc, "definition": definition, "version": version, "mcp_tool_schemas": mcp_schemas}
+        raw = {"agent": doc, "definition": definition, "version": version,
+            "mcp_tool_schemas": mcp_schemas, "mcp_inventory": mcp_inventory}
     schema_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\nWrote {yaml_path}")
     print(f"Wrote {schema_path}")
     print(f"  model={model!r} instructions_len={len(instructions)} tools={len(tools)}")
     for label, schemas in mcp_schemas.items():
-        print(f"  mcp '{label}': {len(schemas)} tool schema(s)")
+        inventory = mcp_inventory[label]
+        print(f"  mcp '{label}': {len(schemas)} listed tool schema(s), "
+              f"{len(inventory['skills'])} skill(s); "
+              f"runtime discovery required={inventory['runtime_discovery_required']}")
     return 0
 
 

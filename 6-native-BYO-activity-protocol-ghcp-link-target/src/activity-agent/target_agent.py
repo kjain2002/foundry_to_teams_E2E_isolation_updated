@@ -41,9 +41,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger("github-copilot.target")
 
@@ -123,9 +125,22 @@ class TargetAgent:
         if self.mcp_servers:
             labels = ", ".join(s["label"] for s in self.mcp_servers)
             lines.append(
-                "You also have the target agent's toolbox ("
-                + labels + "). Use list_toolbox_tools to see its tools and "
-                "call_toolbox_tool to run one for its domain tasks."
+                "Linked toolboxes/MCP servers: " + labels + ". "
+                "For questions asking which tools are available, call list_toolbox_tools "
+                "and report configured MCP sources and their discovery status separately "
+                "from built-in tools; do not call code_interpreter a custom MCP connector. "
+                "Include every configured toolbox builtin from builtin_tools, including "
+                "Code Interpreter, under toolbox tools; those are separate from the "
+                "helper's local shell/file capabilities. Gateway tools and auto-pinned "
+                "tools are not an exhaustive inventory. Do not claim a configured tool "
+                "was removed simply because tools/list did not return it. "
+                "Use search_toolbox for the user's actual task to discover tools "
+                "across these servers, then call_toolbox_tool with the exact returned "
+                "toolbox key, tool name and schema-matching arguments. Do not assume "
+                "the toolbox contains only SQL tools. If consent is required, ask "
+                "the user to complete the sign-in card and retry. The query_starburst "
+                "helper uses this same toolbox MCP route; it is not a separate "
+                "non-MCP connectivity fallback."
             )
         if self.extra_tools:
             lines.append(
@@ -134,6 +149,23 @@ class TargetAgent:
                 "cannot call one, say so briefly rather than pretending to."
             )
         return "\n".join(lines)
+
+
+def normalize_toolbox_reference(tool: dict[str, Any]) -> dict[str, Any]:
+    """Use the published-default endpoint and actual name for Foundry toolboxes."""
+    if str(tool.get("type", "")).lower() != "mcp" or not tool.get("server_url"):
+        return tool
+    parts = urlsplit(str(tool["server_url"]))
+    match = re.fullmatch(
+        r"(/api/projects/[^/]+/toolboxes/([^/]+))(?:/versions/[^/]+)?/mcp", parts.path,
+    )
+    if not match or parts.scheme != "https" or not (parts.hostname or "").endswith(".services.ai.azure.com"):
+        return tool
+    return {
+        **tool,
+        "server_label": match.group(2),
+        "server_url": urlunsplit((parts.scheme, parts.netloc, match.group(1) + "/mcp", parts.query, "")),
+    }
 
 
 def _classify_tools(
@@ -150,8 +182,8 @@ def _classify_tools(
         if ttype in _NATIVE_EQUIVALENT_TYPES:
             native.append(ttype)
             continue
-        # MCP servers / Foundry toolboxes can be mounted on the Copilot SDK session.
         if ttype == "mcp" and tool.get("server_url"):
+            tool = normalize_toolbox_reference(tool)
             entry: dict[str, Any] = {
                 "label": str(tool.get("server_label") or "mcp"),
                 "url": str(tool["server_url"]),

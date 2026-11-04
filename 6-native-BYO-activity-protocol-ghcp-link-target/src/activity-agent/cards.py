@@ -116,12 +116,18 @@ def tasks_card_attachment(conversation_id: str, tasks: list[dict[str, Any]]) -> 
     )
 
 
-def build_consent_card(url: str, label: str = "the data source") -> dict:
+def build_consent_card(url: str, label: str = "the data source", retry_id: str | None = None) -> dict:
     """Build an Adaptive Card prompting the user to authorize a toolbox connection.
 
     The toolbox returned CONSENT_REQUIRED with an APIM consent URL; we surface it
     as an Action.OpenUrl button so the user can sign in / authorize, then retry.
     """
+    actions = [{"type": "Action.OpenUrl", "title": "Connect / sign in", "url": url}]
+    if retry_id:
+        actions.append({
+            "type": "Action.Submit", "title": "I've signed in - retry",
+            "data": {"authRetryId": retry_id}, "associatedInputs": "none",
+        })
     return {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "type": "AdaptiveCard",
@@ -130,22 +136,81 @@ def build_consent_card(url: str, label: str = "the data source") -> dict:
             {"type": "TextBlock", "text": "🔐 Authorization needed", "weight": "Bolder", "size": "Medium", "wrap": True},
             {"type": "TextBlock",
              "text": f"To run that query I need you to connect to **{label}**. "
-                     "Click below to sign in and authorize access, then ask me again.",
+                     + ("Sign in first, then click retry or send a message to resume your saved request."
+                    if retry_id else "Sign in first, then send your request again."),
              "wrap": True, "isSubtle": True},
         ],
+        "actions": actions,
+    }
+
+
+def consent_card_attachment(url: str, label: str = "the data source", retry_id: str | None = None) -> Attachment:
+    """Wrap the consent card as an Attachment for send_activity."""
+    return Attachment(
+        content_type=_ADAPTIVE_CONTENT_TYPE,
+        content=build_consent_card(url, label, retry_id),
+    )
+
+
+
+def build_session_status_card(info: dict) -> dict:
+    """Adaptive Card showing current session metadata."""
+    if not info.get("active"):
+        body_text = "No active session yet. Send a message to start one."
+    else:
+        body_text = (
+            f"**Started:** {info['started']}\n\n"
+            f"**Last active:** {info['idle']}\n\n"
+            f"**Messages this session:** {info['turns']}\n\n"
+            f"**Stale reminder after:** {info['timeout_hours']:.0f} hours of inactivity\n\n"
+            "Your session never resets automatically — only **/new** or **Start Fresh** clears it."
+        )
+    return {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.5",
+        "body": [
+            {"type": "TextBlock", "text": "Session Info", "weight": "Bolder", "size": "Medium", "wrap": True},
+            {"type": "TextBlock", "text": body_text, "wrap": True},
+        ],
         "actions": [
-            {"type": "Action.OpenUrl", "title": "Connect / sign in", "url": url},
+            {"type": "Action.Execute", "title": "Start Fresh", "verb": "reset_session"},
         ],
     }
 
 
-def consent_card_attachment(url: str, label: str = "the data source") -> Attachment:
-    """Wrap the consent card as an Attachment for send_activity."""
+def session_status_card_attachment(info: dict) -> Attachment:
+    """Wrap the session status card as an Attachment for send_activity."""
     return Attachment(
         content_type=_ADAPTIVE_CONTENT_TYPE,
-        content=build_consent_card(url, label),
+        content=build_session_status_card(info),
     )
 
+
+def build_stale_session_card(gap_desc: str) -> dict:
+    """Adaptive Card notifying the user their session context is old."""
+    return {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.5",
+        "body": [
+            {"type": "TextBlock", "text": "Session notice", "weight": "Bolder", "size": "Medium", "wrap": True},
+            {"type": "TextBlock",
+             "text": f"It's been **{gap_desc}**. I still have your previous conversation context.",
+             "wrap": True},
+            {"type": "TextBlock",
+             "text": "Type **/new** to start a fresh conversation, or just keep chatting to continue.",
+             "wrap": True, "isSubtle": True, "size": "Small"},
+        ],
+    }
+
+
+def stale_session_card_attachment(gap_desc: str) -> Attachment:
+    """Wrap the stale-session card as an Attachment for send_activity."""
+    return Attachment(
+        content_type=_ADAPTIVE_CONTENT_TYPE,
+        content=build_stale_session_card(gap_desc),
+    )
 
 
 def card_invoke_response(card: dict) -> dict:

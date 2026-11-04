@@ -1,449 +1,463 @@
-# 6 — BYO Activity Protocol (hosted agent) powered by the GitHub Copilot SDK, linked to your target agent
+# 6 - BYO Activity Protocol with GitHub Copilot SDK and a linked target definition
 
-> Deploy your **own** hosted agent that speaks the Foundry **Activity Protocol**
-> natively and runs its own model + tool loop with the
-> [GitHub Copilot SDK](https://pypi.org/project/github-copilot-sdk/). It
-> **publishes to Teams as one of your existing Foundry prompt agents** (same
-> instructions, model and toolbox) and adds the Teams UX the Foundry-managed
-> publish path in [folder 5](../5-native-rest-api-activity-protocol-routing/)
-> can't: streaming replies, file reads, file downloads, sign-in cards for
-> per-user MCP tools, adaptive cards, and on-demand toolbox skills.
+> Deploy a Foundry-hosted Teams assistant with your own Activity Protocol UX,
+> an existing prompt agent's instructions and model, and live toolbox tools and
+> skills. Follow the stages below in order. All terminal examples use **PowerShell**.
 
 ## Goal
 
-Same target audience as folders 4–6 (Teams users), but instead of forwarding
-each turn to a second agent (as [`6-…-echo`](../6-native-BYO-activity-protocol-echo/)
-does), this helper **becomes** your target agent in a single agent/session:
+Like the [echo sample](../6-native-BYO-activity-protocol-echo/), you own the Teams
+message, card, upload and download handlers. Unlike echo, this helper does **not**
+forward each message to the target Responses agent. It snapshots that agent's
+definition and runs its **own GitHub Copilot SDK model/tool loop**.
 
-- **Link a target agent.** `link-target-agent.ps1` pulls an existing Foundry
-  prompt agent's instructions, model and toolbox into `target-agent.yaml`; the
-  helper adopts them at startup.
-- **Use any MCP tools from your toolbox.** The model lists the toolbox's tools
-  and calls any of them by name. Nothing is hard-coded to a particular tool.
-- **Per-user OAuth tools work in Teams.** When a toolbox connection needs the
-  user to sign in (OAuth identity passthrough), the helper catches
-  `CONSENT_REQUIRED` and shows a **sign-in card**, then forwards the per-request
-  call id so the toolbox acts as that user.
-- **Toolbox skills on demand.** Skills published on the toolbox (SKILL.md) are
-  listed in one line each; the model loads a skill's full text only when a
-  request matches it.
-- **Files both ways.** Users attach files (and images) in Teams; the model
-  creates `.docx` / `.pptx` / `.pdf` / text files with its own Python and hands
-  them back through the Teams **File Consent** flow.
-- **Durable logs.** Optional App Insights export, including each user message
-  and agent reply, that survives session resets and redeploys.
+- Adopt a target's instructions, model deployment and MCP/toolbox references.
+- Discover and invoke tools across linked toolboxes, including Tool Search gateways.
+- Show real per-connector OAuth consent links and resume blocked requests.
+- Load toolbox skills on demand, with periodic skill-index refresh.
+- Read raw uploads and generate downloadable documents through host file/Python tools.
+- Use `/status` and `/new` to inspect or explicitly reset the SDK conversation.
 
-Reference — [`foundry-samples/…/bring-your-own/activity/github-copilot`](https://github.com/microsoft-foundry/foundry-samples/tree/main/samples/python/hosted-agents/bring-your-own/activity).
+This template contains no customer tenant, subscription, toolbox or target-agent
+snapshot. Copy the example configuration and supply your own values.
 
-## How it flows
+## How It Flows
 
-```
-Teams user
-   |  (Azure Bot messaging endpoint = this hosted agent's activity URL)
-   v
-activity-agent  (this folder, Foundry hosted agent, agent identity)
-   |  GitHub Copilot SDK session (one per Teams conversation)
-   |     model: your Foundry deployment (Responses API, agent-identity token)
-   |     prompt: target agent's instructions + skill index
-   |
-   +--> built-in shell / python / file tools   (read uploads, build documents)
-   +--> list_toolbox_tools / call_toolbox_tool  -> Foundry toolbox (MCP)
-   |        CONSENT_REQUIRED -> sign-in card in Teams
-   +--> get_skill                               -> toolbox skills (SKILL.md)
-   +--> deliver_file                            -> Teams File Consent -> OneDrive
+```text
+Before deployment:
+target prompt agent -> linker -> target-agent.yaml -> packaged hosted helper
+
+At runtime:
+Teams -> Azure Bot -> Foundry Activity endpoint -> this helper
+  -> GitHub Copilot SDK session -> your Foundry model deployment
+  -> consent-aware MCP bridge -> linked toolbox consumer endpoint
+       -> configured MCP connections / tools / skills
+  -> host file and Python tools -> deliver_file -> Teams File Consent -> OneDrive
 ```
 
-Every Teams turn:
-1. Downloads any attachments and hands them to the model.
-2. Streams the model's reply into Teams while it runs tools.
-3. After the stream closes, sends any queued UI as its own message: a sign-in
-   card, the to-do board, or a file-consent card (retried on 429/5xx).
-4. On **Allow**, uploads the file bytes to the user's OneDrive and posts the
-   download card.
+The original target agent is not invoked. Its model and instructions are a
+snapshot; toolbox calls remain live. A toolbox's Code Interpreter, if configured,
+is distinct from the host's file/Python tools and need not share the same files.
+Custom function/OpenAPI/grounding declarations copied from a target are not
+automatically implemented; this bridge executes supported MCP/resource routes.
 
 ## Prerequisites
 
-- **Tools:** Azure CLI 2.60+, Azure Developer CLI (`azd`) 1.34+ with the
-  `azure.ai.agents` extension, PowerShell 7+, Python 3.10+ on `PATH` (for the
-  linker). Docker is **not** needed: `azd deploy` builds remotely.
-- **An existing Foundry project** with a model deployment the agent can use
-  (for example `gpt-5.2`). This folder never creates a Foundry account,
-  project or model.
-- **Optional:** a Foundry **prompt agent** to link (its instructions + model +
-  toolbox) and a **toolbox** holding your MCP tools and skills.
-- **Roles:** see [Roles / RBAC](#roles--rbac). Every grant this deployment
-  needed is listed there.
-- **Teams:** for sideloading, *Upload a custom app* must be allowed for your
-  account; for org-wide publishing, a Teams admin approves the app.
+- An existing Foundry account/project with a usable model deployment and hosted-agent support.
+- Azure CLI, Azure Developer CLI (`azd`, 1.34+ recommended), the `azure.ai.agents`
+  extension, PowerShell 7+, and Python 3.10+ for the linker. Hosted runtime: Python 3.13.
+- A target prompt agent and toolbox if you want linked behavior; neither is created here.
+- For a private project: VPN/connected development host, working private DNS, and
+  access to the project API. Teams itself does not connect through your private endpoint.
+- Teams custom-app upload permission, or an administrator to distribute the app.
+- Approved outbound access to model/tool endpoints, shared-file downloads and any
+  package sources needed for runtime document generation. Container builds use ACR remotely.
 
-## Roles / RBAC
+This folder does not provision your Foundry account, project, model or private network.
 
-| Who | Role / permission | Scope | Why |
-|---|---|---|---|
-| You (deployer) | **Contributor** (or Owner) | Resource group | `azd deploy` creates the Azure Bot + Teams channel; you create App Insights. |
-| You (deployer) | **Foundry User** (formerly *Azure AI User*) | Foundry project | Create agent versions and sessions, read the target agent for linking, call the publish API. |
-| You (deployer) | **User Access Administrator** or **Owner** | Foundry project (or RG) | `deploy.ps1` grants the agent identity *Foundry User* (next row). Skip if an admin does that grant. |
-| **Agent identity** (`<agent>-AgentIdentity` service principal) | **Foundry User** | Foundry project | **Read toolbox skills.** Without it the toolbox answers `skills/list` with an empty list and no error (tools still work), so the agent says no skills exist. `deploy.ps1` grants this automatically (`GrantAgentIdentityFoundryUser`). |
-| Subscription admin (one time) | Register the `Microsoft.BotService` resource provider | Subscription | `azd deploy` can't create the Azure Bot until the provider is registered. Needs subscription Contributor. |
-| Entra admin (only for OAuth MCP connections) | **Cloud Application Administrator** or **Application Administrator** | Tenant | Grant admin consent on the Entra app your toolbox connection uses for OAuth identity passthrough. |
-| Each end user (only for OAuth MCP connections) | Sign in once through the **sign-in card** | Their own account | The toolbox runs that user's tool calls under their identity. No Azure role. |
-| Teams admin (only for `Tenant` publish) | Approve the app in Teams Admin Center | Tenant | `PublishScope = 'Tenant'` submits the app to the org catalog. `Shared` needs no admin. |
+## What's In This Folder
 
-> [!NOTE]
-> **Not needed:** subscription-scope `Microsoft.Resources/deployments/write`.
-> `deploy.ps1` renders `azure.yaml` with your existing project's `endpoint` and
-> `deployments: []`, so azd never runs a subscription-scope deployment to
-> create a new project or model.
->
-> **Not needed:** any role for the agent to call the model or the toolbox's
-> tools. A hosted agent's identity gets that access from the platform.
-
-## What's in this folder
-
-- `deploy.config.example.psd1` — every value you fill in (copy to `deploy.config.psd1`, git-ignored).
-- `deploy.ps1` — the one command you run: renders `azure.yaml`, links the target agent, sets App Insights, runs `azd deploy`, deletes sessions still on old versions, grants the agent identity *Foundry User*, and stamps the Teams package.
-- `link-target-agent.ps1` + `fetch_target_agent.py` — pull a Foundry prompt agent's instructions, model and toolbox into `src/activity-agent/target-agent.yaml`.
-- `publish.ps1` — publish the deployed agent to Microsoft 365 / Teams through the Foundry `microsoft365/publish` API.
-- `src/activity-agent/` — the hosted agent:
-  - `main.py` — `ActivityAgentServerHost` + `message` / `invoke` handlers; streams replies, then delivers queued cards/files; logs each turn.
-  - `client.py` — GitHub Copilot SDK harness: one session per conversation, your Foundry model as provider, system prompt = persona + target instructions + skill index.
-  - `tools.py` — custom tools: to-do list, `deliver_file` (rejects corrupt Office files), `list_toolbox_tools` / `call_toolbox_tool`, `get_skill`.
-  - `toolbox.py` — consent-aware MCP client for the linked toolbox (tools + skills).
-  - `target_agent.py` — loads `target-agent.yaml` (or `TARGET_AGENT_ID`) and builds the system prompt.
-  - `files.py` — downloads files/images users share in Teams.
-  - `outfiles.py` — Teams File Consent card + `fileConsent/invoke` upload to OneDrive.
-  - `cards.py` — to-do Adaptive Card and the toolbox sign-in card.
-  - `target-agent.example.yaml`, `.env.example`, `Dockerfile`, `requirements.txt`.
+| File | Purpose |
+| --- | --- |
+| [deploy.config.example.psd1](deploy.config.example.psd1) | Placeholder configuration; copy to ignored `deploy.config.psd1`. |
+| [deploy.ps1](deploy.ps1) | Link, render manifest, configure azd, deploy, manage old sessions, grant optional identity RBAC, stamp package names. |
+| [link-target-agent.ps1](link-target-agent.ps1), [fetch_target_agent.py](fetch_target_agent.py) | Extract the target definition and inspect available MCP tools/skills without requiring user consent at build time. |
+| [publish.ps1](publish.ps1) | Publish the deployed helper, not the source target, through Foundry's M365 publish API. |
+| [target-agent.example.yaml](src/activity-agent/target-agent.example.yaml) | Manual YAML alternative to extracting a target agent. |
+| [client.py](src/activity-agent/client.py), [target_agent.py](src/activity-agent/target_agent.py) | SDK sessions, target snapshot loading and skill-index refresh. |
+| [toolbox.py](src/activity-agent/toolbox.py), [auth_retry.py](src/activity-agent/auth_retry.py) | Generic toolbox discovery/calls, consent probing and independent pending operations. |
+| [main.py](src/activity-agent/main.py), [cards.py](src/activity-agent/cards.py) | Activity handlers, streaming where supported, consent/task/session cards. |
+| [files.py](src/activity-agent/files.py), [outfiles.py](src/activity-agent/outfiles.py), [tools.py](src/activity-agent/tools.py) | Raw uploads, model tools and Teams file delivery. |
+| [test_toolbox_bridge.py](test_toolbox_bridge.py) | Isolated bridge, consent, session and attachment regression tests. |
 
 ## Step Log
 
-### Step 1 — Install the tools and sign in
+<details><summary><b>Step 1 - Configure the existing project and sign in</b></summary>
 
-<details><summary><b>1a — Install the CLIs and the azd agents extension</b></summary>
+From this folder, install the agents extension if needed and copy the config:
 
 ```powershell
-winget install Microsoft.AzureCLI
-winget install Microsoft.Azd
 azd extension install azure.ai.agents
-```
-</details>
-
-<details><summary><b>1b — Sign in to the tenant and subscription that hold your Foundry project</b></summary>
-
-```powershell
-az login --tenant <tenant-guid>
-az account set --subscription <subscription-guid>
-azd auth login --tenant-id <tenant-guid>
-```
-
-`deploy.ps1` refuses to run if `az` is signed in to a different tenant or
-subscription than the config says.
-</details>
-
-<details><summary><b>1c — Check that the Bot Service provider is registered</b></summary>
-
-```powershell
-az provider show --namespace Microsoft.BotService --query registrationState -o tsv
-# Not "Registered"? Someone with subscription Contributor runs:
-az provider register --namespace Microsoft.BotService
-```
-</details>
-
-### Step 2 — Get the deployer roles
-
-<details><summary><b>2a — Contributor on the resource group</b></summary>
-
-```powershell
-az role assignment create --assignee <your-upn-or-object-id> --role Contributor `
-  --scope /subscriptions/<sub>/resourceGroups/<rg>
-```
-</details>
-
-<details><summary><b>2b — Foundry User on the Foundry project</b></summary>
-
-The role was renamed from *Azure AI User*; use its id so the name doesn't matter.
-
-```powershell
-az role assignment create --assignee <your-upn-or-object-id> `
-  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d `
-  --scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>
-```
-</details>
-
-<details><summary><b>2c — User Access Administrator on the project (so deploy.ps1 can grant the agent identity)</b></summary>
-
-Needed only if you want `deploy.ps1` to grant the agent identity *Foundry User*
-itself. Otherwise set `GrantAgentIdentityFoundryUser = $false` and have an admin
-run Step 7 instead.
-
-```powershell
-az role assignment create --assignee <your-upn-or-object-id> --role "User Access Administrator" `
-  --scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>
-```
-</details>
-
-### Step 3 — Prepare your agent, toolbox and tools in Foundry
-
-<details><summary><b>3a — Confirm the model deployment exists</b></summary>
-
-Note its name (Foundry portal → **Models + endpoints**). It goes in
-`ModelDeploymentName`; a linked target agent's own model overrides it.
-</details>
-
-<details><summary><b>3b — (Optional) Create a toolbox with your MCP tools and skills</b></summary>
-
-Foundry portal → **Tools** → create a toolbox, then **Add** your MCP servers
-(any MCP tool: data, APIs, search…) and any **Skills** (SKILL.md documents,
-for example a document-generation skill). With **Tool search** on, the toolbox
-exposes a search + call pair; the agent handles both shapes.
-</details>
-
-<details><summary><b>3c — (Optional) Create the prompt agent you want to publish</b></summary>
-
-Give it the instructions and model you want in Teams, and attach the toolbox
-from 3b. Its name goes in `TargetAgentName`. Without a target, the helper keeps
-its built-in assistant persona and has no toolbox.
-</details>
-
-<details><summary><b>3d — (Only for OAuth MCP connections) Grant admin consent on the connection's Entra app</b></summary>
-
-If a toolbox connection uses OAuth identity passthrough, a **Cloud Application
-Administrator** (or Application Administrator) grants admin consent for the
-API permissions on that connection's Entra app registration. Each user still
-signs in once through the sign-in card the agent shows them.
-</details>
-
-### Step 4 — Fill in deploy.config.psd1
-
-<details><summary><b>4a — Copy the example</b></summary>
-
-```powershell
 Copy-Item deploy.config.example.psd1 deploy.config.psd1
 ```
 
-`deploy.config.psd1` is git-ignored. Every `<placeholder>` must be replaced;
-the scripts stop on any that are left.
-</details>
+Fill every required placeholder. Use the actual project ARM resource ID,
+project endpoint, tenant, subscription, region and an existing model deployment.
+Choose a globally unique `BotName`. Keep `ServiceSourcePath = 'src/activity-agent'`.
+`TargetAgentName` selects the prompt agent to snapshot; leave it empty only for
+the manual-YAML route in Step 4 or the built-in persona.
 
-<details><summary><b>4b — Azure and Foundry identifiers</b></summary>
+`AppInsightsName = ''` disables the optional export. If set, that App Insights
+resource must already exist in the configured resource group. Message/reply text
+logging defaults to enabled; review your data-retention policy before using it.
 
-`TenantId`, `SubscriptionId`, `SubscriptionName`, `AzureLocation`,
-`ResourceGroupName`, `FoundryAccountName`, `FoundryProjectName`,
-`FoundryProjectResourceId` (portal → project → **Properties** → Resource ID),
-`FoundryProjectEndpoint`, `ModelDeploymentName`.
-</details>
-
-<details><summary><b>4c — Agent, bot and Teams names</b></summary>
-
-- `AzdEnvironmentName` — any local name for this azd environment.
-- `AgentName` / `AgentDisplayName` — the hosted agent (lowercase name, unique in the project).
-- `BotName` — the Azure Bot; must be **globally** unique.
-- `TeamsAppShortName` (≤ 30 chars), `TeamsAppFullName`, `TeamsAppVersion`.
-- Publish fields (`TeamsDisplayName`, `PublishScope`, descriptions, URLs) — used by `publish.ps1`.
-</details>
-
-<details><summary><b>4d — Optional switches</b></summary>
-
-- `TargetAgentName` — the prompt agent from 3c; `''` keeps the built-in persona.
-- `AppInsightsName` — an App Insights resource in the RG (Step 5); `''` disables export.
-- `GrantAgentIdentityFoundryUser` — `$true` (default) grants the agent identity
-  *Foundry User* on every deploy; `$false` if an admin does it (Step 7).
-</details>
-
-### Step 5 — (Optional) Create App Insights for durable logs
-
-<details><summary><b>5a — Create a workspace and App Insights</b></summary>
+Sign in yourself; these commands change your local CLI identity/context:
 
 ```powershell
-az monitor log-analytics workspace create -g <rg> -n <law-name> -l <region> --retention-time 30
-$ws = az monitor log-analytics workspace show -g <rg> -n <law-name> --query id -o tsv
-az monitor app-insights component create -g <rg> -a <appi-name> -l <region> `
-  --kind web --application-type web --workspace $ws
+$config = Import-PowerShellDataFile ./deploy.config.psd1
+az login --tenant $config.TenantId
+az account set --subscription $config.SubscriptionId
+azd auth login --tenant-id $config.TenantId
+az account show --query '{tenant:tenantId,subscription:id,user:user.name}' -o json
 ```
 
-Put `<appi-name>` in `AppInsightsName`. `deploy.ps1` reads its connection
-string at deploy time and stores it only in the git-ignored azd environment.
+Check that the result matches the configuration. az and azd maintain separate
+authentication caches. Do not commit the filled config, `.azure/`, generated
+snapshots, packages or credentials.
 </details>
 
-<details><summary><b>5b — Know what gets logged</b></summary>
+<details><summary><b>Step 2 - Check RBAC and provider registration before deployment</b></summary>
 
-Each turn logs `USER_MESSAGE` and `AGENT_REPLY` **with the message text**, plus
-card/file delivery (`UI_*`), toolbox calls (`TOOLBOX_*`), skill use
-(`SKILL_TOOL_CALLED`, `SKILLS_LIST`) and errors. Anyone with read access to
-the App Insights resource can read users' messages; set
-`LOG_MESSAGE_CONTENT=false` on the agent to log metadata only.
+These are separate identities and permissions, not one blanket role grant:
 
-> [!NOTE]
-> Foundry overrides `APPLICATIONINSIGHTS_CONNECTION_STRING` inside hosted
-> containers with an invalid value. The agent therefore receives the string as
-> `AGENT_APPINSIGHTS_CONNECTION_STRING` and copies it back into the standard
-> variable before the host starts. Look for `APPINSIGHTS_EXPORT configured=True`
-> at startup; the platform's own `appinsights_configured=False` line can be ignored.
-</details>
+| Identity | Permission / scope | Used for |
+| --- | --- | --- |
+| Deployer | Contributor or equivalent on the resource group | Create/manage Bot resources and deployment dependencies. |
+| Deployer | Foundry User or appropriate agent-management rights on the project | Read the target; create helper versions; configure/publish the helper. |
+| Role-granting administrator | Owner, User Access Administrator or equivalent role-assignment permission at the intended scope | Grant project access to the helper identity and consumers. Contributor alone cannot grant roles. |
+| Hosted helper identity | Foundry User on the project, as used by this sample | Read linked toolbox definitions and skills; downstream resources may need additional permissions. |
+| End user | Required agent access; Foundry Agent Consumer for OAuth identity passthrough | Invoke an RBAC-protected agent and resolve per-user toolbox context. Downstream tool permissions/consent are additional requirements. |
+| Subscription administrator | `Microsoft.BotService/register/action` at subscription scope | Register Bot Service once if not already registered. |
+| Teams / identity administrator, when applicable | App distribution policies / required OAuth admin consent | Allow installation and the connection's requested permissions. |
 
-### Step 6 — Deploy with deploy.ps1
-
-<details><summary><b>6a — Run it</b></summary>
+Read-only checks for your signed-in user:
 
 ```powershell
-.\deploy.ps1                 # full deploy
-.\deploy.ps1 -RenderOnly     # only render azure.yaml, deploy nothing
-.\deploy.ps1 -SkipLink       # keep the current target-agent.yaml
-.\deploy.ps1 -KeepSessions   # don't reset Teams chats onto the new version
+$config = Import-PowerShellDataFile ./deploy.config.psd1
+$ProjectScope = $config.FoundryProjectResourceId
+$RgScope = "/subscriptions/$($config.SubscriptionId)/resourceGroups/$($config.ResourceGroupName)"
+$MyId = az ad signed-in-user show --query id -o tsv
+az role assignment list --assignee $MyId --scope $RgScope --include-inherited -o table
+az role assignment list --assignee $MyId --scope $ProjectScope --include-inherited -o table
+az provider show --namespace Microsoft.BotService --query registrationState -o tsv
 ```
 
-Always deploy with `deploy.ps1`, not a bare `azd deploy`: the steps below only
-happen in the script.
+An administrator grants missing roles at the narrowest suitable scope. If Bot
+Service is not `Registered`, a subscription administrator runs
+`az provider register --namespace Microsoft.BotService` and verifies registration.
+Group membership, PIM activation and custom-role actions must also be considered;
+an empty direct-assignment listing alone is not proof of no access.
+
+The wrapper attempts the helper-identity project grant after deployment when
+`GrantAgentIdentityFoundryUser = $true`. Set it to `$false` if an administrator
+will grant it. It does not grant user/consumer roles, configure connector OAuth
+consent, or grant access to downstream databases/APIs.
+
+For OAuth passthrough, Foundry currently requires the consumer's Entra tenant to
+match the hosting project. Supporting multiple connector challenges in this code
+does not bypass platform cross-tenant restrictions. See [tool authentication](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/tool-authentication).
 </details>
 
-<details><summary><b>6b — What the script does, in order</b></summary>
+<details><summary><b>Step 3 - Prepare toolbox MCP connections, tools and skills</b></summary>
 
-1. Validates the config.
-2. Links the target agent (`link-target-agent.ps1`) → `src/activity-agent/target-agent.yaml`.
-3. Renders `azure.yaml` bound to your **existing** project (`endpoint`, `deployments: []`).
-4. Checks `az` is on the configured tenant/subscription and the project is
-   visible, then sets the azd environment values (and the App Insights
-   connection string).
-5. Runs `azd deploy`: remote build, new agent version, Azure Bot + Teams channel.
-6. **Deletes agent sessions not on the new version.** A session stays on the
-   version it was created with, so without this an existing Teams chat keeps
-   running the old code. It also clears those chats' saved state (to-dos,
-   cached files, conversation history).
-7. **Grants the agent identity *Foundry User*** on the project (skipped if it already has it).
-8. Writes your Teams names into `src/activity-agent/appPackage.zip`.
+In your Foundry project:
+
+1. Create a connection for each MCP server with the required authentication.
+   For per-user OAuth, configure the actual OAuth client, scopes and exact callback;
+   obtain any required administrator consent. Keep client secrets out of YAML/code.
+2. Add the MCP sources to a toolbox and reference their project connection IDs.
+3. Add any supported skill content, including its `SKILL.md` and supporting resources.
+4. Publish a toolbox version and explicitly promote the version you want to **default**.
+5. Attach the toolbox to the prompt agent you will link in Step 4.
+
+Use the toolbox **consumer endpoint**:
+
+```text
+https://<account>.services.ai.azure.com/api/projects/<project>/toolboxes/<toolbox-name>/mcp?api-version=v1
+```
+
+This template normalizes version-pinned Foundry toolbox references to that
+endpoint. It follows **published default**, not the newest unpromoted version.
+The toolbox name and its authentication connection alias need not be identical.
+
+With Tool Search enabled, `tools/list` can contain search/call gateway tools and
+auto-pinned tools, not the complete inventory. The bridge handles this mixed
+shape, searches configured MCP sources, and invokes discovered names/schemas.
+With Tool Search disabled, it handles direct lists and pagination. Keyword
+search alone is never proof that another tool was removed.
+
+Configured toolbox built-ins are reported separately from this helper's host
+tools. An arbitrary copied tool declaration is not a guarantee of implementation.
+Configured tool-approval requirements are not bypassed by this sample.
 </details>
 
-<details><summary><b>6c — Check the output</b></summary>
+<details><summary><b>Step 4 - Integrate the target agent through YAML</b></summary>
 
-Look for `Deployed agent version: <n>`, any `Deleting session …` lines, the
-Foundry User line, and `Deployment verified`. If the role grant prints a
-warning, do Step 7.
-</details>
-
-### Step 7 — Make sure the agent identity can read toolbox skills
-
-<details><summary><b>7a — Find the agent identity</b></summary>
+**Option A - extract an existing prompt agent (recommended).** Set
+`TargetAgentName` in the config, then run:
 
 ```powershell
-azd ai agent show --output json   # instance_identity.principal_id
+.\link-target-agent.ps1
 ```
 
-In Entra it appears as `<foundry>-<project>-<agent>-AgentIdentity`.
-</details>
+The linker creates/reuses an isolated venv under `%LOCALAPPDATA%/ghcp-linktool`,
+fetches the target's latest definition and writes:
 
-<details><summary><b>7b — Grant Foundry User on the project (if deploy.ps1 didn't)</b></summary>
+- `src/activity-agent/target-agent.yaml`: effective model, instructions and tools.
+- `src/activity-agent/target-agent.schema.json`: audit of the raw source definition
+  and best-effort MCP inventory. Consent-gated inventory is deferred to runtime.
+
+**Option B - maintain YAML directly.** Leave `TargetAgentName = ''`, then:
 
 ```powershell
-az role assignment create --assignee-object-id <principal_id> `
-  --assignee-principal-type ServicePrincipal `
-  --role 53ca6127-db72-4b80-b1b0-d745d6d5456d `
-  --scope /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>
+Copy-Item ./src/activity-agent/target-agent.example.yaml ./src/activity-agent/target-agent.yaml
 ```
 
-Allow a few minutes to apply. No redeploy is needed; the agent retries the
-skill lookup until it finds skills.
+Edit the copied file with your instructions, model deployment and toolbox
+consumer URL/connection reference. Do not include credentials. `deploy.ps1`
+automatically refreshes Option A on each real deployment unless `-SkipLink` is
+used; it does not overwrite manual YAML when no target is configured.
+
+Local YAML takes precedence over startup `TARGET_AGENT_ID` lookup. The linker
+does not publish the source agent, copy its conversation history, or delegate
+turns to it. The model override is the target's deployment name, so verify that
+deployment exists and the helper can use it.
 </details>
 
-<details><summary><b>7c — Confirm in the logs</b></summary>
+<details><summary><b>Step 5 - Deploy the helper and understand the wrapper</b></summary>
 
-Ask the agent to "list your skills", then check for `SKILLS_LIST count=<n>`
-with `n > 0` and `SKILL_READ … chars=<n>` (Step 10a). `count=0 error=None`
-means the role isn't in effect yet.
+```powershell
+.\deploy.ps1 -RenderOnly
+```
+
+This validates the filled configuration and source entry point and writes
+`azure.yaml` locally. It does **not** link, authenticate, grant roles, deploy or
+validate live permissions. Review the rendered existing-project endpoint.
+
+```powershell
+.\deploy.ps1
+```
+
+The real wrapper runs these actions in order:
+
+1. Refreshes `target-agent.yaml` when `TargetAgentName` is set, unless `-SkipLink`.
+2. Renders `azure.yaml` with the configured source, runtime, CPU/memory, Activity
+   protocol, `BotServiceRbac`, existing project endpoint and `deployments: []`.
+3. Checks az tenant/subscription and project visibility, then selects/creates the
+   configured **local azd environment**. The target-link step occurs before these
+   checks, so sign into the intended tenant first.
+4. Sets azd values for the existing project/model and Bot name. If configured,
+   reads the existing App Insights connection string into azd state without
+   adding it to source files.
+5. Calls `azd deploy --no-prompt`: packages the code, builds remotely, registers a
+   helper version and uses the agents extension's Bot/channel/package flow.
+6. Reads the deployed version. By default, deletes sessions on earlier versions
+   so new messages can use the new code. This destroys those sessions' history,
+   tasks, pending retries and cached uploads. Re-upload templates afterward.
+7. Attempts the optional helper-identity Foundry User grant, then stamps names
+  and version in `src/activity-agent/appPackage.zip` and verifies the names.
+
+`-KeepSessions` skips deletion, but retained chats can keep running old versions.
+`-SkipLink` packages the existing snapshot; it does not fetch target changes.
+Neither switch makes model/instruction changes live automatically.
+
+The wrapper does not create your source prompt agent or toolbox, register the
+provider, enable the private-project M365 exception, or call `publish.ps1`.
+
+If the identity grant was skipped or warned, an administrator can use the
+deployed agent's `instance_identity.principal_id` (not its client ID):
+
+```powershell
+$config = Import-PowerShellDataFile ./deploy.config.psd1
+$Agent = az rest --method get --url "$($config.FoundryProjectEndpoint)/agents/$($config.AgentName)?api-version=v1" --resource https://ai.azure.com | ConvertFrom-Json
+az role assignment create --assignee-object-id $Agent.instance_identity.principal_id `
+  --assignee-principal-type ServicePrincipal --role 53ca6127-db72-4b80-b1b0-d745d6d5456d `
+  --scope $config.FoundryProjectResourceId
+```
+
+Verify the role assignment and allow propagation. Empty skills can also mean an
+empty default toolbox version, network errors or insufficient access; do not
+diagnose every empty list as RBAC alone.
 </details>
 
-### Step 8 — Put the agent in Teams
+<details><summary><b>Step 6 - Enable the M365 endpoint for private-network Foundry</b></summary>
 
-<details><summary><b>8a — Option A: publish through Foundry</b></summary>
+**Required when public network access is disabled.** Run management requests
+from a machine that can reach the private project API. Keep the account private:
+this opens only Foundry's source-IP-filtered Activity route for Microsoft 365 / Bot
+Service traffic. It does not expose the project's Responses, MCP or management APIs.
+
+Read the current endpoint configuration first:
+
+```powershell
+$config = Import-PowerShellDataFile ./deploy.config.psd1
+$AgentUrl = "$($config.FoundryProjectEndpoint)/agents/$($config.AgentName)?api-version=v1"
+az rest --method get --url $AgentUrl --resource https://ai.azure.com --query agent_endpoint
+```
+
+For this **Activity-only, Shared/RBAC** sample, enable the exception:
+
+```powershell
+$body = @{
+  agent_endpoint = @{
+    protocol_configuration = @{
+      activity = @{ enable_m365_public_endpoint = $true }
+    }
+    authorization_schemes = @(@{ type = 'BotServiceRbac' })
+  }
+} | ConvertTo-Json -Depth 10
+$temporary = New-TemporaryFile
+try {
+  Set-Content -LiteralPath $temporary -Value $body -Encoding utf8 -NoNewline
+  az rest --method patch --url $AgentUrl --resource https://ai.azure.com `
+    --headers 'Content-Type=application/merge-patch+json' --body "@$temporary"
+} finally {
+  Remove-Item -LiteralPath $temporary -Force
+}
+az rest --method get --url $AgentUrl --resource https://ai.azure.com `
+  --query agent_endpoint.protocol_configuration.activity
+```
+
+Verify `enable_m365_public_endpoint: true`. Recheck after redeployment.
+
+**Important:** this PATCH replaces `protocol_configuration` and
+`authorization_schemes`. If your endpoint has other protocols or authorization
+schemes, include them in the body rather than discarding them. `Tenant` publishing
+uses `BotServiceTenant`; choose the scheme to match the intended publish scope.
+Public routing does not remove authentication, tenant or RBAC requirements.
+
+Source: [Publish with private-network Foundry](https://learn.microsoft.com/azure/foundry/agents/how-to/publish-copilot-virtual-network).
+</details>
+
+<details><summary><b>Step 7 - Publish or install the helper in Teams</b></summary>
+
+For the Foundry M365 publishing route, fill the publishing fields in the config:
 
 ```powershell
 .\publish.ps1
 ```
 
-`PublishScope = 'Shared'` makes it available to you; `'Tenant'` submits it to
-the org catalog for a Teams admin to approve. Then open Teams → **Apps** →
-**Built for your org**.
+This checks az context and the configured Bot, then POSTs the **helper's**
+`/agents/<helper>/microsoft365/publish` endpoint. `Shared` uses RBAC-restricted
+visibility; `Tenant` uses tenant-wide visibility/authorization and can require
+Teams administrator approval. Publishing can replace the Bot Service auth scheme.
+
+Alternatively, upload `src/activity-agent/appPackage.zip` through Teams **Apps >
+Manage your apps > Upload an app**. The package must target the deployed Bot and,
+for file workflows, its bot entry must have `supportsFiles: true` and personal
+scope. Inspect the generated manifest; catalog publishing is not a substitute
+for validating file support. Follow your tenant's app approval policy.
+
+This sample uses the azd agents extension's Bot/channel flow. Do not separately
+deploy echo's Bot or storage template: echo has a different runtime and state design.
 </details>
 
-<details><summary><b>8b — Option B: sideload the generated package</b></summary>
+<details><summary><b>Step 8 - Test tools, consent, skills, files and session commands</b></summary>
 
-Teams → **Apps** → **Manage your apps** → **Upload an app** →
-`src/activity-agent/appPackage.zip`. If *Upload a custom app* is greyed out,
-an admin enables it under Teams Admin Center → **Teams apps** → **Setup policies**.
+1. Send `/version` and compare the reported version with the deployment output.
+2. Ask what tools and skills are available. Confirm each configured MCP source,
+   not only matches from a broad keyword search.
+3. Request an actual authorized tool operation. If a consent card appears,
+   complete sign-in, then click **I've signed in - retry** or send `done`.
+4. Complete any additional connector challenges that actually appear. There is
+   no assumed tenant, account or sign-in count. Foundry and the downstream API
+   still enforce their own tenant and access policies.
+5. Request a task covered by a skill and confirm the skill is loaded.
+6. Upload a template or document, then request a real generated download. Use
+   **Allow** on the Teams File Consent card and open the resulting file.
+
+| Command | What it does | What it does not do |
+| --- | --- | --- |
+| `/status` | Shows SDK session age, idle time, turn count and stale-reminder threshold; offers **Start Fresh**. | Does not reset the conversation. |
+| `/new` or **Start Fresh** | Rotates the persisted SDK nonce/session ID, drops the cached SDK session, resets counters and clears pending auth operations. | Does not create a new Foundry-hosted session, revoke connector consent, delete uploaded files or clear tasks. |
+| `/version` | Shows platform version/session identifiers and release label. | Does not switch a chat to another deployed version. |
+
+`SESSION_TIMEOUT_HOURS` defaults to 4. Idle expiry is **a reminder only**, not an
+automatic reset. SDK metadata persists under the hosted session's `$HOME`.
+Deleting that hosted session during deployment is broader than `/new` and also
+removes its saved files/state.
+
+Consent retries are user/conversation/SDK-session bound and valid for 20 minutes
+per pending entry. Separate operations are preserved independently; a card claims
+its own operation and a normal message selects the oldest pending one. A consumed
+retry ID cannot run again. Browser sign-in sends no completion callback; there is
+no background polling. Credentials remain with the connection provider; local
+retry state stores request/operation data, not connection tokens or consent URLs.
 </details>
 
-### Step 9 — Test it in Teams
+<details><summary><b>Step 9 - Change toolboxes without confusing runtime updates with redeployment</b></summary>
 
-<details><summary><b>9a — Check the version</b></summary>
+| Change | Redeploy helper? | Action |
+| --- | --- | --- |
+| Tools/MCP sources/skills within the same linked Foundry toolbox | No | Publish a version and promote it to **default**. Runtime discovery uses the consumer endpoint. Skill index refresh is cached for about 60 seconds and occurs on subsequent requests. |
+| New unpromoted toolbox version | No change reaches consumers | Test it, then promote the intended version to default. Newest-created is not automatically selected. |
+| Connection credential repair, downstream grants or renewed user consent | Usually no code redeploy | Repair the actual connection/backend, verify callback/scopes, and test again. Do not recreate the toolbox by default. |
+| Target instructions/model or the linked toolbox name/project/endpoint | Yes | Relink or edit YAML, inspect the snapshot, then deploy. Target-definition edits alone do not update a packaged helper. |
+| Helper Python, dependencies, session settings, CPU/memory or other packaged environment | Yes | Change source/configuration and redeploy; deal deliberately with old sessions. |
+| Teams names, manifest capabilities or distribution scope | Package/publish update | Update configuration, rebuild/stamp or republish as needed, and install the updated app. |
 
-Send `/version`. The reply shows `agent_version=<n>` (should match Step 6c)
-and the `session_id`.
+This behavior is specific to Foundry toolbox consumer endpoints. Arbitrary
+external MCP URLs retain their own versioning and refresh behavior. Revoked or
+unavailable tools still return errors; publishing a default does not guarantee
+that downstream auth/networking is healthy.
 </details>
 
-<details><summary><b>9b — Use a toolbox tool</b></summary>
+<details><summary><b>Step 10 - Diagnose problems and run local regression tests</b></summary>
 
-Ask for something one of your MCP tools does. If its connection needs sign-in,
-a **sign-in card** appears: sign in, then ask again.
-</details>
-
-<details><summary><b>9c — Files in and out</b></summary>
-
-- Attach a PDF/DOCX/image and ask about it.
-- Ask for a document or deck → click **Allow** on the card → open it. (Office
-  files with structural damage are rejected before delivery, and the model
-  rebuilds them.)
-</details>
-
-<details><summary><b>9d — Skills</b></summary>
-
-Ask "what skills do you have?" or a task a skill covers. The logs should show
-`SKILL_TOOL_CALLED` on those turns only.
-</details>
-
-### Step 10 — Monitor and troubleshoot
-
-<details><summary><b>10a — Read a session's console log</b></summary>
+Select the configured azd environment before inspecting sessions:
 
 ```powershell
-azd ai agent sessions list                       # find the active session id
-azd ai agent monitor -s <session-id> --tail 300
+$config = Import-PowerShellDataFile ./deploy.config.psd1
+azd env select $config.AzdEnvironmentName
+azd ai agent sessions list
+azd ai agent monitor --session-id <session-id> --type console --tail 200
 ```
-</details>
 
-<details><summary><b>10b — Query App Insights</b></summary>
+Activity agents are push-based: use Teams or the Bot's Web Chat for runtime
+checks, not a Responses-style `azd ai agent invoke`. Web Chat does not validate
+Teams personal-scope file-consent behavior.
 
-```kusto
-traces
-| where timestamp > ago(1h)
-| where message has_any ("USER_MESSAGE", "AGENT_REPLY", "UI_", "TOOLBOX_", "SKILL", "Traceback")
-| project timestamp, severityLevel, message
-| order by timestamp asc
+| Symptom | Check first |
+| --- | --- |
+| Private-project agent is silent | Step 6 flag, Bot endpoint, authorization, consumer access and console errors. |
+| Old behavior after redeploy | `/version`; retained hosted sessions may remain on old code. `/new` resets SDK history only. |
+| Missing tools/skills | Actual linked toolbox name/default version, source-specific discovery, identity RBAC and per-source errors. |
+| Repeated consent or 401 | Current request identity, actual returned consent URL, connector scopes/callback, credential expiry and downstream permissions. A 401 without a real consent link remains an error. |
+| Retry card still shows an old acknowledgment | Use a newly emitted card or send a normal message; verify the new deployed version. |
+| File upload/download fails | Personal scope, `supportsFiles`, file-consent response and `UI_ATTACHMENT_SEND_FAILED` logs. |
+
+Run the isolated tests in a dedicated Python environment with `httpx`, `PyYAML`
+and `azure-identity` installed. Do not use global/base package installation:
+
+```powershell
+$PreviousHome = $env:HOME
+$TestHome = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N'))
+try {
+  $env:HOME = $TestHome
+  python -B -m unittest discover -s . -p test_toolbox_bridge.py
+  if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
+} finally {
+  $env:HOME = $PreviousHome
+  if (Test-Path $TestHome) { Remove-Item -LiteralPath $TestHome -Recurse -Force }
+}
 ```
+
+These tests mock network/model calls; passing is not live deployment proof.
+They cover generic discovery, default routing, consent sequences, independent
+claims, claim I/O recovery, successful text containing 401 diagnostics, session
+reset/persistence and raw attachment handoff. If claim restoration fails, the
+claim is retained/logged for manual recovery, not blindly re-executed.
 </details>
 
-<details><summary><b>10c — Common symptoms and fixes</b></summary>
+## Limitations And Security
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Teams chat still runs old behavior after a deploy | The chat's session is pinned to the version it started on | Deploy with `deploy.ps1` (deletes stale sessions), or `azd ai agent sessions delete <id>` |
-| "No skills are available" though the toolbox has skills | Agent identity lacks *Foundry User* (`SKILLS_LIST count=0 error=None`) | Step 7 |
-| Download or sign-in card never appears | Look for `UI_ATTACHMENT_SEND_FAILED` with its status | 429/5xx are retried; a 400 means Teams rejected the card payload |
-| PowerPoint offers to *Repair* a generated deck | Duplicate parts from reusing a template's slides | Fixed in `deliver_file` + prompt; if it recurs, check `DELIVER_FILE_REJECTED` |
-| App Insights stays empty | Exporter fails on the platform's connection string | Look for `APPINSIGHTS_EXPORT configured=True`; redeploy with `AppInsightsName` set |
-</details>
+- The helper owns execution; linking does not clone every Foundry tool capability.
+- Per-user OAuth passthrough must meet Foundry's consumer/tenant requirements and
+  each connector's policy. More generic retry handling is not cross-tenant OBO support.
+- File Consent delivery and interactive cards depend on the channel/client;
+  validate Teams personal scope rather than assuming M365 Copilot parity.
+- Runtime shell/Python tools and document-library installation execute code.
+  Review tool permission policy, network egress and content logging for production.
+- Project-scoped identity permissions and definition inspection can be broader
+  than a minimal consumer-only deployment. Review least privilege for your setup.
+- Old dependency pins protect Activity SDK compatibility. Upgrade the host and
+  M365 Agents packages together and rerun tests before deploying.
 
-## Limitations / trade-offs
+## References
 
-- **One hosted agent per published agent.** Each Teams agent is its own deploy.
-- **Sessions reset on deploy.** Deleting stale sessions clears per-chat state;
-  use `-KeepSessions` to keep it (those chats stay on the old version).
-- **Card/file flows are Teams personal-scope features.** In Microsoft 365
-  Copilot they fall back to text.
-- **Cross-tenant delivery** has the same caveat as folders 4/5: same-tenant
-  works reliably.
-- **You maintain the code** in `src/activity-agent/`.
-
-## Learn more
-
-- [Hosted agents](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents)
-- [Hosted agent quickstart (azd)](https://learn.microsoft.com/azure/foundry/agents/quickstarts/quickstart-hosted-agent?pivots=azd)
-- [`azure-ai-agentserver-activity`](https://pypi.org/project/azure-ai-agentserver-activity/) · [GitHub Copilot SDK](https://pypi.org/project/github-copilot-sdk/)
+- [Echo sample](../6-native-BYO-activity-protocol-echo/) - compare the forwarding architecture.
+- [Hosted agents](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents).
+- [Toolbox consumer endpoints and hosted agents](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/use-toolbox-hosted-agent).
+- [Toolbox authentication](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/tool-authentication).
+- [Private-network M365 publishing](https://learn.microsoft.com/azure/foundry/agents/how-to/publish-copilot-virtual-network).
+- [GitHub Copilot SDK](https://github.com/github/copilot-sdk).

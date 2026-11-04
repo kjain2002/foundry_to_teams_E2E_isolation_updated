@@ -61,6 +61,10 @@ import outfiles
 import cards
 import tools as _tools
 
+def _activity_user_id(activity) -> str | None:
+    sender = getattr(activity, "from_property", None)
+    return getattr(sender, "aad_object_id", None) or getattr(sender, "id", None)
+
 
 def _current_call_id() -> str | None:
     """Per-request Foundry call id from the platform request context, or None.
@@ -125,14 +129,14 @@ async def _deliver_ui(context, conversation_id, stream) -> None:
                 url = action.get("url") or ""
                 if not url:
                     continue
-                att = cards.consent_card_attachment(url, action.get("label") or "the data source")
+                att = cards.consent_card_attachment(url, action.get("label") or "the data source", action.get("retry_id"))
                 lead = ""
                 logger.info(
-                    "TOOLBOX_CONSENT_URL_EMITTED conversation_id=%s turn_id=%s call_id_present=%s url_prefix=%s",
+                    "TOOLBOX_CONSENT_CARD_EMITTED conversation_id=%s turn_id=%s call_id_present=%s retry_available=%s",
                     conversation_id,
                     turn_id,
                     call_id_present,
-                    url[:120],
+                    bool(action.get("retry_id")),
                 )
             elif action.get("type") == "file":
                 # The model created the file itself (via its shell/python tools)
@@ -178,7 +182,7 @@ async def _deliver_ui(context, conversation_id, stream) -> None:
             # transient 429/5xx from the channel is the likely intermittent failure.
             meta = _attachment_meta(att)
             # Activity.text must be a str when present, so omit it for cards
-            # with no lead (e.g. the toolbox sign-in card).
+            # with no lead (e.g. the Starburst sign-in card).
             out = Activity(type=ActivityTypes.message, attachments=[att])
             if lead:
                 out.text = lead
@@ -253,10 +257,9 @@ async def on_message(context, _state):
     conversation_id = activity.conversation.id if activity.conversation else "unknown"
     user_text = (activity.text or "").strip()
     # Capture the platform per-request call id (x-agent-foundry-call-id) so the
-    # toolbox tools can forward it to the toolbox proxy — required for per-user
+    # Starburst tool can forward it to the toolbox proxy — required for per-user
     # OAuth identity passthrough to resolve THIS user's consent/credentials.
     call_id = _current_call_id()
-    _tools.set_call_id(conversation_id, call_id)
     logger.info(
         "TURN_CORRELATION_START conversation_id=%s turn_id=%s call_id_present=%s call_id_prefix=%s",
         conversation_id,
@@ -273,6 +276,10 @@ async def on_message(context, _state):
         len(user_text),
     )
     _log_message_content("USER_MESSAGE", activity, conversation_id, user_text)
+    auth_user_id = _activity_user_id(activity)
+    submitted = getattr(activity, "value", None)
+    retry_id = submitted.get("authRetryId") if isinstance(submitted, dict) else None
+    retry_id = retry_id if isinstance(retry_id, str) else None
 
     if user_text.casefold() == "/version":
         version = environ.get("FOUNDRY_AGENT_VERSION", "local")
@@ -287,6 +294,39 @@ async def on_message(context, _state):
     if user_text.casefold() == "/debug-attachments":
         await context.send_activity(files.describe_attachments(activity))
         return
+
+    if user_text.casefold() == "/new":
+        await copilot_client.reset_session(conversation_id)
+        await context.send_activity(
+            "**New conversation started.** Previous context has been cleared.\n\n"
+            "Type **/status** to see session info anytime."
+        )
+        return
+
+    if user_text.casefold() == "/status":
+        info = copilot_client.session_status(conversation_id)
+        att = cards.session_status_card_attachment(info)
+        from microsoft_agents.activity import Activity, ActivityTypes
+        await context.send_activity(Activity(
+            type=ActivityTypes.message,
+            attachments=[att],
+        ))
+        return
+
+    # Session awareness: notify the user if their session is old, but do NOT
+    # reset it — only /new creates a new session.
+    expired, gap_desc = copilot_client.check_session_expiry(conversation_id)
+    if expired:
+        logger.info("SESSION_STALE conversation_id=%s gap=%s", conversation_id, gap_desc)
+        try:
+            att = cards.stale_session_card_attachment(gap_desc)
+            from microsoft_agents.activity import Activity, ActivityTypes
+            await context.send_activity(Activity(
+                type=ActivityTypes.message,
+                attachments=[att],
+            ))
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Could not send stale session notification: %s", exc)
 
     # Try to start a streaming response; not all channels support it.
     stream = None
@@ -320,6 +360,9 @@ async def on_message(context, _state):
     else:
         prompt = user_text
 
+    if not prompt and retry_id:
+        prompt = "Retry my saved request after sign-in."
+
     if not prompt:
         if stream is not None:
             try:
@@ -333,7 +376,9 @@ async def on_message(context, _state):
     if stream is None:
         chunks = []
         try:
-            async for kind, chunk in copilot_client.ask_stream(conversation_id, prompt, shared_files):
+            async for kind, chunk in copilot_client.ask_stream(
+                conversation_id, prompt, shared_files, auth_user_id=auth_user_id, call_id=call_id, retry_id=retry_id,
+            ):
                 if kind == "delta" and chunk:
                     chunks.append(chunk)
                 elif kind == "final" and chunk and not chunks:
@@ -356,7 +401,9 @@ async def on_message(context, _state):
     # base64-embedded attachment on a streamed send), so UI must go standalone.
     reply_chunks: list[str] = []
     try:
-        async for kind, chunk in copilot_client.ask_stream(conversation_id, prompt, shared_files):
+        async for kind, chunk in copilot_client.ask_stream(
+            conversation_id, prompt, shared_files, auth_user_id=auth_user_id, call_id=call_id, retry_id=retry_id,
+        ):
             if kind == "progress":
                 stream.queue_informative_update(chunk)
             elif kind in ("delta", "final") and chunk:
@@ -407,6 +454,40 @@ async def on_invoke(context, _state):
         parsed = cards.parse_action(activity)
         if parsed:
             verb, data = parsed
+            if verb == "retry_auth":
+                user_id = _activity_user_id(activity)
+                retry_id = data.get("retryId")
+                valid_request = bool(user_id and isinstance(retry_id, str) and retry_id)
+                card = {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard", "version": "1.5",
+                    "body": [{"type": "TextBlock", "wrap": True,
+                                                            "text": "Continue your saved request using the retry button below, or send a message." if valid_request else
+                                      "That retry request is unavailable. Please send your request again."}],
+                                        "actions": ([{"type": "Action.Submit", "title": "Retry saved request",
+                                                                    "data": {"authRetryId": retry_id}, "associatedInputs": "none"}]
+                                                                if valid_request else []),
+                }
+                from microsoft_agents.activity import Activity, ActivityTypes, InvokeResponse
+                await context.send_activity(Activity(
+                    type=ActivityTypes.invoke_response,
+                    value=InvokeResponse(status=200, body=cards.card_invoke_response(card)),
+                ))
+                return
+            if verb == "reset_session":
+                await copilot_client.reset_session(conversation_id)
+                info = copilot_client.session_status(conversation_id)
+                card = cards.build_session_status_card(info)
+                resp = cards.card_invoke_response(card)
+                try:
+                    from microsoft_agents.activity import Activity, ActivityTypes, InvokeResponse
+                    await context.send_activity(Activity(
+                        type=ActivityTypes.invoke_response,
+                        value=InvokeResponse(status=200, body=resp),
+                    ))
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logger.warning("could not send session reset response: %s", exc)
+                return
             task_id = data.get("taskId")
             try:
                 if verb == "complete_task" and task_id:
@@ -459,8 +540,11 @@ async def on_members_added(context, _state):
         if member.id != context.activity.recipient.id:
             try:
                 await context.send_activity(
-                    "Hi, I'm your simple Teams assistant. Ask me anything, "
-                    "or tell me to add a task."
+                    "Hi, I'm your Teams assistant. Ask me anything, "
+                    "or tell me to add a task.\n\n"
+                    "**Session tips:** Type **/new** to start a fresh conversation, "
+                    "or **/status** to see session info. Your conversation context "
+                    "is never cleared automatically — only **/new** resets it."
                 )
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Could not send welcome: %s", exc)

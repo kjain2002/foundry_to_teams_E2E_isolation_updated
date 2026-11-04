@@ -22,6 +22,7 @@ from copilot import Tool, define_tool
 from pydantic import BaseModel, Field
 
 import toolbox
+import auth_retry
 
 logger = logging.getLogger("github-copilot.tools")
 
@@ -44,16 +45,30 @@ class DeliverFileParams(BaseModel):
                                   "the user for download.")
 
 
-class CallToolboxToolParams(BaseModel):
-    name: str = Field(description="The exact tool name, as returned by list_toolbox_tools.")
-    arguments_json: str = Field(default="{}",
-                                description="The tool's arguments as a JSON object string, "
-                                            "matching the tool's input_schema.")
+class QueryStarburstParams(BaseModel):
+    sql: str = Field(description="The SQL to run against the data source, e.g. "
+                                 "'SHOW CATALOGS' or 'SELECT ...'.")
 
 
 class GetSkillParams(BaseModel):
     name: str = Field(default="", description="Optional skill name (partial ok). "
                                               "Leave empty to list available skills.")
+
+
+class SearchToolboxParams(BaseModel):
+    query: str = Field(description="Describe the capability needed for the user's request.")
+    toolbox: str = Field(default="", description="Exact toolbox key from a previous search; empty searches all.")
+
+
+class CallToolboxParams(BaseModel):
+    toolbox: str = Field(description="Exact toolbox key returned by search_toolbox.")
+    name: str = Field(description="Exact tool name returned by discovery, not a guessed name.")
+    arguments: dict[str, Any] = Field(description="Arguments matching the discovered tool's input schema.")
+
+
+class ReadToolboxResourceParams(BaseModel):
+    toolbox: str = Field(description="Exact toolbox key shown by get_skill or search_toolbox.")
+    uri: str = Field(description="Exact resource URI from the skill or tool result.")
 
 
 class _NoParams(BaseModel):
@@ -77,7 +92,7 @@ def drain_ui(conversation_id: str) -> list[dict[str, Any]]:
 
 
 # Per-turn Foundry call id (x-agent-foundry-call-id), captured in main.on_message
-# and forwarded by the toolbox tools so the toolbox resolves the end user for
+# and forwarded by query_starburst so the toolbox resolves the end user for
 # per-user OAuth identity passthrough.
 _CALL_IDS: dict[str, str | None] = {}
 
@@ -88,6 +103,54 @@ def set_call_id(conversation_id: str, call_id: str | None) -> None:
 
 def get_call_id(conversation_id: str) -> str | None:
     return _CALL_IDS.get(conversation_id)
+
+
+def prepare_auth_result(conversation_id: str, result: dict[str, Any], operation: dict[str, Any]) -> dict[str, Any]:
+    for collection in ("toolboxes", "source_searches"):
+        if collection in result:
+            result = {**result, collection: [prepare_auth_result(conversation_id, item, operation)
+                                             for item in result[collection]]}
+    if result.get("status") != "consent":
+        return result
+    retry_id = auth_retry.stage(conversation_id, operation)
+    queue_ui(conversation_id, {
+        "type": "consent", "url": result.get("url"),
+        "label": result.get("source") or result.get("toolbox") or toolbox.server_label(),
+        "retry_id": retry_id,
+    })
+    return {"status": "consent", "toolbox": result.get("toolbox"), "source": result.get("source"),
+            "retry_available": bool(retry_id),
+            "message": "Sign-in card shown. After signing in, use its retry button or send a message. "
+                       "The host will retry the saved operation; do not invent results or repeat successful actions."}
+
+
+def needs_consent(result: dict[str, Any]) -> bool:
+    return result.get("status") == "consent" or any(
+        needs_consent(item) for collection in ("toolboxes", "source_searches")
+        for item in result.get(collection, [])
+    )
+
+
+def execute_auth_operation(conversation_id: str, operation: dict[str, Any]) -> dict[str, Any]:
+    kind = operation.get("kind")
+    call_id = get_call_id(conversation_id)
+    if kind == "sql":
+        result = toolbox.run_query(operation["sql"], call_id=call_id)
+    elif kind == "inventory":
+        result = {"toolboxes": [toolbox.toolbox_inventory(key, call_id=call_id)
+                                for key in toolbox.toolbox_servers()]}
+    elif kind == "search":
+        keys = [operation["toolbox"]] if operation.get("toolbox") else list(toolbox.toolbox_servers())
+        result = {"toolboxes": [toolbox.toolbox_request(key, query=operation["query"], call_id=call_id)
+                                for key in keys]}
+    elif kind == "call":
+        result = toolbox.toolbox_request(operation["toolbox"], name=operation["name"],
+                                                arguments=operation["arguments"], call_id=call_id)
+    elif kind == "resource":
+        result = toolbox.toolbox_request(operation["toolbox"], uri=operation["uri"], call_id=call_id)
+    else:
+        return {"status": "error", "message": "Saved authorization retry has an unsupported operation."}
+    return prepare_auth_result(conversation_id, result, operation)
 
 
 
@@ -242,45 +305,23 @@ def build_tools(conversation_id: str) -> list[Tool]:
         queue_ui(conversation_id, {"type": "file", "path": path})
         return f"I've prepared **{os.path.basename(path)}** and will offer it for download."
 
-    def _consent_reply(res: dict[str, Any]) -> str | None:
-        """Show the sign-in card when the toolbox demands consent; else None."""
-        if res.get("status") != "consent":
-            return None
-        queue_ui(conversation_id, {
-            "type": "consent",
-            "url": res.get("url"),
-            "label": toolbox.server_label(),
-        })
-        return ("The user isn't connected to this tool's data source yet. I've shown "
-                "them a sign-in card to authorize access. Ask them to click it and "
-                "then ask again. Do not invent results.")
-
-    def _list_toolbox_tools(_params: _NoParams, _inv: Any) -> str:
-        # Call the toolbox ourselves so we can catch CONSENT_REQUIRED and show the
-        # user the sign-in link (the SDK's MCP mount hides that error).
-        res = toolbox.list_tools(call_id=_CALL_IDS.get(conversation_id))
-        consent = _consent_reply(res)
-        if consent:
-            return consent
-        if res.get("status") == "ok":
-            return json.dumps(res.get("tools"), indent=1)[:12000]
-        return ("Listing the toolbox tools failed. Show this diagnostic line to the "
-                f"user verbatim (it helps debugging): {res.get('message')}")
-
-    def _call_toolbox_tool(params: CallToolboxToolParams, _inv: Any) -> str:
-        try:
-            arguments = json.loads(params.arguments_json or "{}")
-        except ValueError as ex:
-            return f"arguments_json is not valid JSON ({ex}). Fix it and call again."
-        if not isinstance(arguments, dict):
-            return "arguments_json must be a JSON object."
-        res = toolbox.call_tool(params.name, arguments, call_id=_CALL_IDS.get(conversation_id))
-        consent = _consent_reply(res)
-        if consent:
-            return consent
-        if res.get("status") == "ok":
-            return f"Tool result:\n{res.get('text')}"
-        return ("The toolbox tool call failed. Show this diagnostic line to the user "
+    def _query_starburst(params: QueryStarburstParams, _inv: Any) -> str:
+        # Call the linked toolbox ourselves so we can catch CONSENT_REQUIRED and
+        # show the user the sign-in link (the SDK's MCP mount hides that error).
+        sql = (params.sql or "").strip()
+        if not sql:
+            return "Provide a SQL statement to run (e.g. 'SHOW CATALOGS')."
+        res = toolbox.run_query(sql, call_id=_CALL_IDS.get(conversation_id))
+        status = res.get("status")
+        if status == "consent":
+            prepare_auth_result(conversation_id, res, {"kind": "sql", "sql": sql})
+            return ("The user isn't connected to the data source yet. I've shown "
+                    "them a sign-in card to authorize access. Ask them to click it "
+                    "and then use its retry button or send a message. The host will "
+                    "retry the saved query. Do not invent results.")
+        if status == "ok":
+            return f"Query result:\n{res.get('text')}"
+        return ("The Starburst query failed. Show this diagnostic line to the user "
                 f"verbatim (it helps debugging): {res.get('message')}")
 
     tools: list[Tool] = [
@@ -307,24 +348,51 @@ def build_tools(conversation_id: str) -> list[Tool]:
                     handler=_deliver_file, params_type=DeliverFileParams),
     ]
     if toolbox.is_available():
+        def _list_toolbox_tools(_params: _NoParams, _inv: Any) -> str:
+            return json.dumps(execute_auth_operation(conversation_id, {"kind": "inventory"}), ensure_ascii=False)
+
+        def _search_toolbox(params: SearchToolboxParams, _inv: Any) -> str:
+            return json.dumps(execute_auth_operation(conversation_id, {"kind": "search", **params.model_dump()}), ensure_ascii=False)
+
+        def _call_toolbox(params: CallToolboxParams, _inv: Any) -> str:
+            return json.dumps(execute_auth_operation(conversation_id, {"kind": "call", **params.model_dump()}), ensure_ascii=False)
+
+        def _read_toolbox_resource(params: ReadToolboxResourceParams, _inv: Any) -> str:
+            return json.dumps(execute_auth_operation(conversation_id, {"kind": "resource", **params.model_dump()}), ensure_ascii=False)
+
+        tools.extend([
+            define_tool("list_toolbox_tools",
+                        description="List configured MCP sources and discover their tools across all linked "
+                                    "toolboxes. Use this when asked what tools/connectors are available. "
+                                    "Include configured toolbox built-ins such as Code Interpreter separately "
+                                    "from this helper's host tools; retain all source and consent/error statuses. "
+                                    "A generic keyword search alone is not a full inventory.",
+                        handler=_list_toolbox_tools, params_type=_NoParams),
+            define_tool("search_toolbox",
+                        description="Discover tools across all linked toolboxes/MCP servers. Search for the "
+                                    "user's actual task, including non-SQL tasks. Results identify each "
+                                    "toolbox, exact tool names and argument schemas. Discover before calling.",
+                        handler=_search_toolbox, params_type=SearchToolboxParams),
+            define_tool("call_toolbox_tool",
+                        description="Invoke a tool discovered by search_toolbox using its exact toolbox key, "
+                                    "name and schema-matching arguments. Consent is shown as a sign-in card.",
+                        handler=_call_toolbox, params_type=CallToolboxParams),
+            define_tool("read_toolbox_resource",
+                        description="Read a skill's supporting resource or another MCP resource by its exact URI. "
+                                    "Returns text or base64 content as provided by the toolbox.",
+                        handler=_read_toolbox_resource, params_type=ReadToolboxResourceParams),
+        ])
         tools.append(define_tool(
-            "list_toolbox_tools",
-            description="List the tools available on the linked toolbox (name, "
-                        "description, input_schema). Call this first when the user "
-                        "asks for something one of those tools could do, then call "
-                        "call_toolbox_tool. If the user must authorize a data source "
-                        "first, this shows them a sign-in card — never fabricate "
-                        "tool results.",
-            handler=_list_toolbox_tools, params_type=_NoParams))
-        tools.append(define_tool(
-            "call_toolbox_tool",
-            description="Call one tool on the linked toolbox by its exact name "
-                        "(from list_toolbox_tools) with arguments_json matching its "
-                        "input_schema. If the toolbox only offers a search tool and "
-                        "a call/invoke tool, use those the same way. If the user must "
-                        "authorize first, this shows them a sign-in card — never "
-                        "fabricate tool results.",
-            handler=_call_toolbox_tool, params_type=CallToolboxToolParams))
+            "query_starburst",
+            description="Run a SQL query against the linked data source "
+                        "(e.g. Starburst). Use this whenever the user asks about "
+                        "data. This uses the same toolbox MCP route, not an independent "
+                        "non-MCP fallback. Use it for "
+                        "catalogs, schemas, tables, or data. Pass the SQL in `sql` "
+                        "(start with 'SHOW CATALOGS' if unsure). If the user needs "
+                        "to authorize first, this tool shows them a sign-in card — "
+                        "never fabricate query results.",
+            handler=_query_starburst, params_type=QueryStarburstParams))
 
         def _get_skill(params: GetSkillParams, _inv: Any) -> str:
             # One line per model call, so each turn shows whether a skill was loaded.
@@ -337,12 +405,10 @@ def build_tools(conversation_id: str) -> list[Tool]:
         tools.append(define_tool(
             "get_skill",
             description="Load a skill published on the linked toolbox and return "
-                        "its full instructions (markdown). Before starting a task "
-                        "that a toolbox skill might cover (for example generating a "
-                        "particular kind of document), call this with an empty "
-                        "`name` to see the skills and when to use each, then call it "
-                        "again with the matching name and follow what it returns. "
-                        "Also call it when the user asks to see a skill. Don't call "
-                        "it for unrelated requests.",
+                        "its full instructions (markdown). Call this before a task "
+                        "matching a skill in the system-prompt index and follow it; also call it "
+                        "when the user asks to see a skill or a copy of its "
+                        "markdown. Don't call it for unrelated requests. Leave "
+                        "`name` empty to list available skills.",
             handler=_get_skill, params_type=GetSkillParams))
     return tools
